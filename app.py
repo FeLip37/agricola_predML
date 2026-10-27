@@ -16,7 +16,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Dicionário de Tradução Amigável dos Lags para Termos Agronômicos
+# Dicionário de Tradução Amigável dos Lags para Termos Agronómicos
 TRADUCAO_VARIAVEIS = {
     'chuva_total': 'Chuva (Mês da Colheita)',
     'radiacao_solar_total': 'Radiação Solar (Mês da Colheita)',
@@ -40,7 +40,7 @@ TRADUCAO_VARIAVEIS = {
 # ------------------------------------------------------------------------------
 @st.cache_data
 def carregar_e_processar_dados():
-    # Carrega a versão leve e rápida compactada em Parquet
+    # Carrega a versão leve compactada em Parquet
     df = pd.read_parquet('pi_mensal.parquet')
 
     # Limpeza de strings e aspas residuais
@@ -55,16 +55,21 @@ def carregar_e_processar_dados():
             df[col] = df[col].astype(str).str.replace('"', '').str.strip()
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
-    # Mapeamento dos meses para ordenação temporal
+    # Mapeamento dos meses (Garante que a coluna mes_num é SEMPRE criada)
     meses_map = {
         'Janeiro': 1, 'Fevereiro': 2, 'Março': 3, 'Abril': 4, 'Maio': 5, 'Junho': 6,
         'Julho': 7, 'Agosto': 8, 'Setembro': 9, 'Outubro': 10, 'Novembro': 11, 'Dezembro': 12
     }
-    if 'mes' in df.columns and df['mes'].dtype == object:
-        df['mes_num'] = df['mes'].map(meses_map).fillna(1).astype(int)
+    if 'mes' in df.columns:
+        df['mes_num'] = df['mes'].astype(str).map(meses_map).fillna(1).astype(int)
+    else:
+        df['mes_num'] = 1
 
-    # Ordenação temporal e Engenharia de Lags
-    df = df.sort_values(by=['estado', 'produto', 'ano', 'mes_num']).reset_index(drop=True)
+    # Ordenação temporal segura
+    cols_ordem = [c for c in ['estado', 'produto', 'ano', 'mes_num'] if c in df.columns]
+    df = df.sort_values(by=cols_ordem).reset_index(drop=True)
+
+    # Engenharia de Lags Climáticos
     for col in ['chuva_total', 'radiacao_solar_total', 'temperatura_media']:
         for lag in [1, 2, 3]:
             df[f'{col}_lag{lag}'] = df.groupby(['estado', 'produto'])[col].shift(lag)
@@ -128,7 +133,7 @@ aba1, aba2, aba3 = st.tabs([
 # ------------------------------------------------------------------------------
 with aba1:
     st.subheader("Sensibilidade Climática das Culturas Agrícolas por Estado")
-    st.caption("Passe o cursor do rato sobre qualquer estado para visualizar a cultura mais afetada e a fase climática crítica.")
+    st.caption("Passe o cursor sobre qualquer estado para visualizar a cultura mais afetada e a fase climática crítica.")
 
     @st.cache_data
     def carregar_geojson():
@@ -146,7 +151,7 @@ with aba1:
     }
     cores_regiao = {'Norte': '#2ca02c', 'Nordeste': '#ff7f0e', 'Centro-Oeste': '#9467bd', 'Sudeste': '#d62728', 'Sul': '#1f77b4'}
 
-    # Normalizador de texto para correspondência perfeita entre o GeoJSON e o DataFrame
+    # Normalizador de texto para correspondência perfeita entre GeoJSON e DataFrame
     def norm_text(txt):
         if not isinstance(txt, str): return ""
         return unicodedata.normalize('NFD', txt).encode('ascii', 'ignore').decode('utf-8').strip().lower()
@@ -167,7 +172,7 @@ with aba1:
         feature['properties']['correlacao'] = str(st_info['correlacao'])
         feature['properties']['sensibilidade'] = st_info['sensibilidade_pct']
 
-    # Mapa centrado no Brasil (Camada Esri estável)
+    # Mapa centrado no Brasil (Camada Esri)
     mapa = folium.Map(
         location=[-14.2350, -51.9253], 
         zoom_start=4, 
