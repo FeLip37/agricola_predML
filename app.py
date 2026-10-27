@@ -18,7 +18,7 @@ st.set_page_config(
 
 # Dicionário de Tradução Amigável dos Lags para Termos Agronómicos
 TRADUCAO_VARIAVEIS = {
-    'chuva_total': 'Chuva (Mês da Colheita)',
+    'chuva_total': 'Chuva (Total Mês da Colheita)',
     'radiacao_solar_total': 'Radiação Solar (Mês da Colheita)',
     'temperatura_media': 'Temperatura Média (Mês da Colheita)',
     
