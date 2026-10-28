@@ -9,8 +9,6 @@ import os
 import gc
 import base64
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.compose import ColumnTransformer
 
 # ------------------------------------------------------------------------------
 # CONFIGURAÇÃO DA PÁGINA
@@ -24,13 +22,13 @@ st.set_page_config(
 )
 
 # ------------------------------------------------------------------------------
-# INJEÇÃO CSS: TEMA CLARO, ESPAÇAMENTO DO TOPO E ELIMINAÇÃO DO VERMELHO
+# INJEÇÃO CSS: FIX DE ILEGIBILIDADE DO SELECTBOX E TEMA CLARO CORPORATIVO
 # ------------------------------------------------------------------------------
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-    /* FORÇAR TEMA CLARO E AFASTAR CABEÇALHO DO TOPO DA TELA */
+    /* FORÇAR TEMA CLARO NO APP */
     html, body, [data-testid="stAppViewContainer"], .stApp, main, header, section {
         background-color: #FFFFFF !important;
         color: #111827 !important;
@@ -39,10 +37,8 @@ st.markdown("""
 
     header[data-testid="stHeader"] {
         background-color: #FFFFFF !important;
-        height: 3rem !important;
     }
 
-    /* Padding superior aumentado (4rem) para o título nunca ser cortado */
     .block-container {
         padding-top: 4.5rem !important;
         padding-bottom: 2rem !important;
@@ -53,11 +49,28 @@ st.markdown("""
         font-family: 'Inter', sans-serif !important;
     }
 
-    .stCaption, p {
-        color: #4B5563 !important;
+    /* FIX DEFINITIVO PARA O MENU SUSPENSO (SELECTBOX / DROPDOWN) */
+    div[data-baseweb="select"] > div {
+        background-color: #FFFFFF !important;
+        color: #111827 !important;
+        border-color: #D1D5DB !important;
     }
 
-    /* ELIMINAR VERMELHO/ROSA DAS ABAS -> VERDE AGRO (#15803D) */
+    div[data-baseweb="popover"], div[role="listbox"], ul[role="listbox"] {
+        background-color: #FFFFFF !important;
+    }
+
+    li[role="option"] {
+        background-color: #FFFFFF !important;
+        color: #111827 !important;
+    }
+
+    li[role="option"]:hover, li[role="option"][aria-selected="true"] {
+        background-color: #F3F4F6 !important;
+        color: #15803D !important;
+    }
+
+    /* ABAS EM VERDE AGRO (#15803D) */
     button[data-baseweb="tab"] {
         background-color: transparent !important;
         border: none !important;
@@ -132,7 +145,7 @@ TRADUCAO_VARIAVEIS = {
 }
 
 # ------------------------------------------------------------------------------
-# 1. CARREGAMENTO E PROCESSAMENTO (OTIMIZADO)
+# 1. CARREGAMENTO E PROCESSAMENTO (OTIMIZADO VIA CACHE)
 # ------------------------------------------------------------------------------
 @st.cache_data
 def carregar_e_processar_dados():
@@ -182,7 +195,7 @@ def carregar_e_processar_dados():
 df_ml = carregar_e_processar_dados()
 
 # ------------------------------------------------------------------------------
-# 2. PRÉ-CÁLCULO DE SENSIBILIDADES (CACHE DE ALTA PERFORMANCE)
+# 2. PRÉ-CÁLCULO ESTATÍSTICO DE SPEARMAN
 # ------------------------------------------------------------------------------
 @st.cache_data
 def precalcular_todas_sensibilidades(df_input):
@@ -257,20 +270,18 @@ aba1, aba2, aba3 = st.tabs([
 ])
 
 # ------------------------------------------------------------------------------
-# ABA 1: MAPA GEOGRÁFICO DE ZONAS (SELETOR COMPACTO)
+# ABA 1: MAPA GEOGRÁFICO DE ZONAS
 # ------------------------------------------------------------------------------
 with aba1:
     st.markdown('<h3 style="color: #111827 !important; margin-bottom: 4px;">Sensibilidade Climática das Culturas Agrícolas por Estado</h3>', unsafe_allow_html=True)
 
     opcoes_filtro = ["Visão Geral (Cultura Mais Sensível por Estado)"] + sorted([k for k in matriz_sensibilidade.keys() if k != "Visão Geral (Cultura Mais Sensível por Estado)"])
 
-    # Seletor integrado em uma coluna limpa
     col_sel, col_info = st.columns([0.40, 0.60])
     with col_sel:
         produto_selecionado = st.selectbox(
             "Filtrar cultura no mapa:",
-            opcoes_filtro,
-            label_visibility="collapsed"
+            opcoes_filtro
         )
 
     info_estados = matriz_sensibilidade.get(produto_selecionado, {})
@@ -324,7 +335,6 @@ with aba1:
         feature['properties']['correlacao'] = str(st_info['correlacao'])
         feature['properties']['sensibilidade'] = st_info['sensibilidade_pct']
 
-    # MAPA COM NAVEGAÇÃO SUAVE E SEM MARCA D'ÁGUA DE API KEY
     mapa = folium.Map(
         location=[-14.2350, -51.9253], 
         zoom_start=4,
