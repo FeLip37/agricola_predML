@@ -251,7 +251,7 @@ aba1, aba2, aba3 = st.tabs([
 ])
 
 # ------------------------------------------------------------------------------
-# ABA 1: MAPA GEOGRÁFICO DE ZONAS (OTIMIZADO)
+# ABA 1: MAPA GEOGRÁFICO DE ZONAS (ESRI LIGHT GRAY CANVAS - SEM API KEY)
 # ------------------------------------------------------------------------------
 with aba1:
     st.markdown('<h3 style="color: #111827 !important;">Sensibilidade Climática das Culturas Agrícolas por Estado</h3>', unsafe_allow_html=True)
@@ -293,7 +293,7 @@ with aba1:
         feature['properties']['correlacao'] = str(st_info['correlacao'])
         feature['properties']['sensibilidade'] = st_info['sensibilidade_pct']
 
-    # Mapa otimizado (CartoDB Positron leve + sem duplicação de tiles)
+    # Mapa Esri World Light Gray Canvas (Totalmente gratuito, sem chave de API e sem repetição)
     mapa = folium.Map(
         location=[-14.2350, -51.9253], 
         zoom_start=4,
@@ -304,10 +304,10 @@ with aba1:
     )
 
     folium.TileLayer(
-        tiles='CartoDB positron',
-        name='CartoDB Positron',
-        no_wrap=True,
-        attr='&copy; <a href="https://carto.com/">CARTO</a>'
+        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+        name='Esri Light Gray Canvas',
+        attr='Esri, HERE, Garmin, USGS, NGA, EPA, USDA, NPS',
+        no_wrap=True
     ).add_to(mapa)
 
     folium.GeoJson(
@@ -316,7 +316,7 @@ with aba1:
             'fillColor': f['properties']['cor_regiao'], 
             'color': '#FFFFFF', 
             'weight': 1.2, 
-            'fillOpacity': 0.60
+            'fillOpacity': 0.65
         },
         highlight_function=lambda f: {
             'fillColor': f['properties']['cor_regiao'], 
@@ -332,7 +332,7 @@ with aba1:
         )
     ).add_to(mapa)
 
-    # returned_objects=[] elimina completamente o lag ao passar o mouse sobre os estados
+    # desativa eventos desnecessários do folium para eliminar o lag no mouse
     st_folium(mapa, width="100%", height=520, returned_objects=[])
 
 # ------------------------------------------------------------------------------
