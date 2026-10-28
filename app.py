@@ -22,13 +22,12 @@ st.set_page_config(
 )
 
 # ------------------------------------------------------------------------------
-# INJEÇÃO CSS: FIX DE CONTRASTE DO SELECTBOX E TEMA CLARO CORPORATIVO
+# INJEÇÃO CSS: TEMA CLARO CORPORATIVO E SELECTBOX LEGÍVEL
 # ------------------------------------------------------------------------------
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-    /* FORÇAR TEMA CLARO NO APP */
     html, body, [data-testid="stAppViewContainer"], .stApp, main, header, section {
         background-color: #FFFFFF !important;
         color: #111827 !important;
@@ -145,7 +144,7 @@ TRADUCAO_VARIAVEIS = {
 }
 
 # ------------------------------------------------------------------------------
-# 1. CARREGAMENTO E PROCESSAMENTO (OTIMIZADO VIA CACHE)
+# 1. CARREGAMENTO E PROCESSAMENTO DE DADOS
 # ------------------------------------------------------------------------------
 @st.cache_data
 def carregar_e_processar_dados():
@@ -167,61 +166,56 @@ def carregar_e_processar_dados():
     cols_num = ['quantidade_produzida', 'chuva_total', 'radiacao_solar_total', 'temperatura_media']
     for col in cols_num:
         if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(np.float32)
-
-    if 'ano' in df.columns:
-        df['ano'] = pd.to_numeric(df['ano'], errors='coerce').fillna(2000).astype(np.int16)
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
     meses_map = {
         'Janeiro': 1, 'Fevereiro': 2, 'Março': 3, 'Abril': 4, 'Maio': 5, 'Junho': 6,
         'Julho': 7, 'Agosto': 8, 'Setembro': 9, 'Outubro': 10, 'Novembro': 11, 'Dezembro': 12
     }
     if 'mes' in df.columns:
-        df['mes_num'] = df['mes'].astype(str).map(meses_map).fillna(1).astype(np.int8)
+        df['mes_num'] = df['mes'].astype(str).map(meses_map).fillna(1).astype(int)
     else:
-        df['mes_num'] = np.int8(1)
+        df['mes_num'] = 1
 
     cols_ordem = [c for c in ['estado', 'produto', 'ano', 'mes_num'] if c in df.columns]
     df = df.sort_values(by=cols_ordem).reset_index(drop=True)
 
     for col in ['chuva_total', 'radiacao_solar_total', 'temperatura_media']:
         for lag in [1, 2, 3]:
-            df[f'{col}_lag{lag}'] = df.groupby(['estado', 'produto'])[col].shift(lag).astype(np.float32)
+            df[f'{col}_lag{lag}'] = df.groupby(['estado', 'produto'])[col].shift(lag)
 
-    df = df.fillna(0)
-    gc.collect()
-    return df
+    return df.fillna(0)
 
 df_ml = carregar_e_processar_dados()
 
 # ------------------------------------------------------------------------------
-# 2. PRÉ-CÁLCULO DE SENSIBILIDADES (CORRIGIDO: FILTRA APENAS PRODUÇÃO REAL > 0)
+# 2. CÁLCULO DE SPEARMAN ORIGINAL (LÓGICA ANTERIOR RESTAURADA)
 # ------------------------------------------------------------------------------
 @st.cache_data
-def precalcular_todas_sensibilidades(df_input):
+def calcular_sensibilidade_geral(df_input):
     cols_analise = [c for c in df_input.columns if 'lag' in c or c in ['chuva_total', 'radiacao_solar_total', 'temperatura_media']]
     
-    # Exige produção agrícola real (>0) para evitar distorção por zeros seguidos
-    df_valid = df_input[df_input['quantidade_produzida'] > 0].copy()
-    
+    # Restaura exatamente a lógica original que o usuário validou
+    df_com_prod = df_input[df_input['quantidade_produzida'] > 0]
+    produtos_ativos = df_com_prod.groupby('estado')['produto'].unique().to_dict()
+
     sensib_map = {}
     visao_geral = {}
 
-    grouped = df_valid.groupby(['estado', 'produto'])
+    # Pré-calcula para todos os produtos e visão geral
+    todos_produtos = df_input['produto'].unique()
     
-    for (est, prod), group in grouped:
-        # Exige histórico mínimo de 12 meses produtivos e variação real
-        if len(group) >= 12 and group['quantidade_produzida'].std() > 0:
-            cols_validas = [c for c in cols_analise if group[c].std() > 0]
-            
-            if cols_validas:
-                corrs = group[['quantidade_produzida'] + cols_validas].corr(method='spearman')['quantidade_produzida'].drop('quantidade_produzida').dropna()
+    for prod in todos_produtos:
+        sensib_map[prod] = {}
+        for est in df_input['estado'].unique():
+            df_p = df_input[(df_input['estado'] == est) & (df_input['produto'] == prod)]
+            if len(df_p) >= 4 and df_p['quantidade_produzida'].std() > 0:
+                corrs = df_p[['quantidade_produzida'] + cols_analise].corr(method='spearman')['quantidade_produzida'].drop('quantidade_produzida').dropna()
                 if not corrs.empty:
                     v_max = corrs.abs().idxmax()
                     c_val = float(corrs[v_max])
                     abs_c = abs(c_val)
-
-                    item = {
+                    sensib_map[prod][est] = {
                         'produto_sensivel': prod,
                         'variavel_critica': TRADUCAO_VARIAVEIS.get(v_max, v_max),
                         'correlacao': round(c_val, 2),
@@ -229,17 +223,34 @@ def precalcular_todas_sensibilidades(df_input):
                         'abs_corr': abs_c
                     }
 
-                    if prod not in sensib_map:
-                        sensib_map[prod] = {}
-                    sensib_map[prod][est] = item
+    # Visão geral (cultura mais sensível por estado)
+    for est in df_input['estado'].unique():
+        prods = produtos_ativos.get(est, df_input[df_input['estado'] == est]['produto'].unique())
+        max_corr_abs, melhor_prod, melhor_var, val_corr = -1, 'Sem Variação', 'N/A', 0.0
 
-                    if est not in visao_geral or abs_c > visao_geral[est]['abs_corr']:
-                        visao_geral[est] = item
+        for prod in prods:
+            df_p = df_input[(df_input['estado'] == est) & (df_input['produto'] == prod)]
+            if len(df_p) >= 4 and df_p['quantidade_produzida'].std() > 0:
+                corrs = df_p[['quantidade_produzida'] + cols_analise].corr(method='spearman')['quantidade_produzida'].drop('quantidade_produzida').dropna()
+                if not corrs.empty:
+                    v_max = corrs.abs().idxmax()
+                    c_val = corrs[v_max]
+                    if abs(c_val) > max_corr_abs:
+                        max_corr_abs = abs(c_val)
+                        melhor_prod, melhor_var, val_corr = prod, v_max, c_val
+
+        visao_geral[est] = {
+            'produto_sensivel': melhor_prod,
+            'variavel_critica': TRADUCAO_VARIAVEIS.get(melhor_var, melhor_var),
+            'correlacao': round(float(val_corr), 2),
+            'sensibilidade_pct': f"{abs(float(val_corr))*100:.1f}%",
+            'abs_corr': abs(float(val_corr))
+        }
 
     sensib_map["Visão Geral (Cultura Mais Sensível por Estado)"] = visao_geral
     return sensib_map
 
-matriz_sensibilidade = precalcular_todas_sensibilidades(df_ml)
+matriz_sensibilidade = calcular_sensibilidade_geral(df_ml)
 
 # ------------------------------------------------------------------------------
 # CABEÇALHO DO DASHBOARD
