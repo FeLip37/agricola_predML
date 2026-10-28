@@ -7,12 +7,13 @@ import requests
 import unicodedata
 import os
 import gc
+import base64
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 
 # ------------------------------------------------------------------------------
-# CONFIGURAÇÃO DA PÁGINA E ÍCONE
+# CONFIGURAÇÃO DA PÁGINA E ÍCONE DO NAVEGADOR
 # ------------------------------------------------------------------------------
 icone_path = "icon.png" if os.path.exists("icon.png") else None
 
@@ -23,12 +24,13 @@ st.set_page_config(
 )
 
 # ------------------------------------------------------------------------------
-# ESTILIZAÇÃO CSS CUSTOMIZADA (LAYOUT BRANCO, FONTE PROFISSIONAL E SEM EMOJIS)
+# ESTILIZAÇÃO CSS CUSTOMIZADA (TEMA BRANCO AGRO & SEM TONS DE VERMELHO)
 # ------------------------------------------------------------------------------
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
+    /* Fundo Branco do App e Tipografia */
     html, body, [class*="css"] {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
         color: #1F2937 !important;
@@ -38,20 +40,29 @@ st.markdown("""
         background-color: #FFFFFF !important;
     }
 
-    h1, h2, h3, h4, h5, h6 {
-        font-family: 'Inter', sans-serif !important;
-        font-weight: 600 !important;
-        color: #111827 !important;
-        letter-spacing: -0.02em !important;
+    /* 1. Deixar a barra superior do Streamlit 100% branca */
+    header[data-testid="stHeader"] {
+        background-color: #FFFFFF !important;
     }
 
+    /* Ajuste de espaçamento do topo */
+    .block-container {
+        padding-top: 1.5rem !important;
+        padding-bottom: 2rem !important;
+    }
+
+    /* 2. Remover tons de vermelho das abas e aplicar Verde Agro */
     button[data-baseweb="tab"] {
         font-family: 'Inter', sans-serif !important;
         font-weight: 500 !important;
         color: #4B5563 !important;
         background-color: transparent !important;
         border-bottom: 2px solid #E5E7EB !important;
-        padding: 12px 20px !important;
+        padding: 10px 16px !important;
+    }
+
+    button[data-baseweb="tab"]:hover {
+        color: #15803D !important;
     }
 
     button[data-baseweb="tab"][aria-selected="true"] {
@@ -60,6 +71,12 @@ st.markdown("""
         font-weight: 600 !important;
     }
 
+    /* Linha indicadora ativa da aba */
+    div[data-baseweb="tab-highlight"] {
+        background-color: #15803D !important;
+    }
+
+    /* Botões e Interações */
     .stButton>button, .stDownloadButton>button {
         background-color: #15803D !important;
         color: #FFFFFF !important;
@@ -68,7 +85,6 @@ st.markdown("""
         font-family: 'Inter', sans-serif !important;
         font-weight: 500 !important;
         padding: 0.6rem 1.2rem !important;
-        transition: background-color 0.2s ease !important;
     }
 
     .stButton>button:hover, .stDownloadButton>button:hover {
@@ -93,7 +109,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ------------------------------------------------------------------------------
-# DICIONÁRIO DE TRADUÇÃO DE VARIÁVEIS
+# TRADUÇÃO DAS VARIÁVEIS
 # ------------------------------------------------------------------------------
 TRADUCAO_VARIAVEIS = {
     'chuva_total': 'Chuva (Mês da Colheita)',
@@ -118,7 +134,6 @@ TRADUCAO_VARIAVEIS = {
 # ------------------------------------------------------------------------------
 @st.cache_data
 def carregar_e_processar_dados():
-    # Carregar apenas colunas essenciais
     cols_para_carregar = [
         'estado', 'produto', 'ano', 'mes', 
         'quantidade_produzida', 'chuva_total', 
@@ -130,12 +145,10 @@ def carregar_e_processar_dados():
     except Exception:
         df = pd.read_parquet('pi_mensal.parquet')
 
-    # Limpeza de texto
     for col in ['estado', 'produto', 'mes']:
         if col in df.columns:
             df[col] = df[col].astype(str).str.replace('"', '').str.strip()
 
-    # Downcasting numérico (float64 -> float32 para economizar 50% de RAM)
     cols_num = ['quantidade_produzida', 'chuva_total', 'radiacao_solar_total', 'temperatura_media']
     for col in cols_num:
         if col in df.columns:
@@ -153,7 +166,6 @@ def carregar_e_processar_dados():
     else:
         df['mes_num'] = np.int8(1)
 
-    # Ordenação e criação de Lags
     cols_ordem = [c for c in ['estado', 'produto', 'ano', 'mes_num'] if c in df.columns]
     df = df.sort_values(by=cols_ordem).reset_index(drop=True)
 
@@ -162,13 +174,13 @@ def carregar_e_processar_dados():
             df[f'{col}_lag{lag}'] = df.groupby(['estado', 'produto'])[col].shift(lag).astype(np.float32)
 
     df = df.fillna(0)
-    gc.collect()  # Libera memória não utilizada
+    gc.collect()
     return df
 
 df_ml = carregar_e_processar_dados()
 
 # ------------------------------------------------------------------------------
-# 2. CÁLCULOS ESTATÍSTICOS DE SPEARMAN OTIMIZADOS
+# 2. CÁLCULOS ESTATÍSTICOS DE SPEARMAN
 # ------------------------------------------------------------------------------
 @st.cache_data
 def calcular_sensibilidade_estados(df_input):
@@ -203,15 +215,27 @@ def calcular_sensibilidade_estados(df_input):
 info_estados = calcular_sensibilidade_estados(df_ml)
 
 # ------------------------------------------------------------------------------
-# CABEÇALHO DO DASHBOARD
+# CABEÇALHO DO DASHBOARD (FLEXBOX PARA ALINHAMENTO COMPACTO)
 # ------------------------------------------------------------------------------
-col_logo, col_titulo = st.columns([0.08, 0.92])
+def get_image_base64(path):
+    if path and os.path.exists(path):
+        with open(path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    return ""
 
-with col_logo:
-    if icone_path:
-        st.image(icone_path, width=64)
+img_b64 = get_image_base64(icone_path)
 
-with col_titulo:
+if img_b64:
+    st.markdown(f"""
+        <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 8px;">
+            <img src="data:image/png;base64,{img_b64}" style="width: 48px; height: 48px; object-fit: contain;" />
+            <div>
+                <h1 style="margin: 0; padding: 0; font-size: 1.8rem; font-weight: 700; color: #111827;">Plataforma de Análise Climatológica e Agrícola do Brasil</h1>
+            </div>
+        </div>
+        <p style="margin: 0 0 16px 0; color: #6B7280; font-size: 0.92rem;">Análise espaço-temporal e modelagem estatística entre dados meteorológicos (Open-Meteo) e safras agrícolas (IBGE/SIDRA).</p>
+    """, unsafe_allow_html=True)
+else:
     st.title("Plataforma de Análise Climatológica e Agrícola do Brasil")
     st.caption("Análise espaço-temporal e modelagem estatística entre dados meteorológicos (Open-Meteo) e safras agrícolas (IBGE/SIDRA).")
 
