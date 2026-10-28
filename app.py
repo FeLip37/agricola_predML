@@ -6,6 +6,7 @@ from streamlit_folium import st_folium
 import requests
 import unicodedata
 import os
+import gc
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
@@ -26,10 +27,8 @@ st.set_page_config(
 # ------------------------------------------------------------------------------
 st.markdown("""
     <style>
-    /* Importação da fonte corporativa Inter */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-    /* Tipografia Global e Fundo Branco */
     html, body, [class*="css"] {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
         color: #1F2937 !important;
@@ -39,7 +38,6 @@ st.markdown("""
         background-color: #FFFFFF !important;
     }
 
-    /* Cabeçalhos e Títulos */
     h1, h2, h3, h4, h5, h6 {
         font-family: 'Inter', sans-serif !important;
         font-weight: 600 !important;
@@ -47,7 +45,6 @@ st.markdown("""
         letter-spacing: -0.02em !important;
     }
 
-    /* Estilização das Abas */
     button[data-baseweb="tab"] {
         font-family: 'Inter', sans-serif !important;
         font-weight: 500 !important;
@@ -63,7 +60,6 @@ st.markdown("""
         font-weight: 600 !important;
     }
 
-    /* Botões de Ação e Download */
     .stButton>button, .stDownloadButton>button {
         background-color: #15803D !important;
         color: #FFFFFF !important;
@@ -80,7 +76,6 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
-    /* Métricas e Alertas */
     [data-testid="stMetricValue"] {
         font-family: 'Inter', sans-serif !important;
         font-weight: 700 !important;
@@ -119,44 +114,61 @@ TRADUCAO_VARIAVEIS = {
 }
 
 # ------------------------------------------------------------------------------
-# 1. CARREGAMENTO E PROCESSAMENTO (CACHEADO VIA ST.CACHE_DATA)
+# 1. CARREGAMENTO COM OTIMIZAÇÃO DE MEMÓRIA (DOWNCASTING)
 # ------------------------------------------------------------------------------
 @st.cache_data
 def carregar_e_processar_dados():
-    df = pd.read_parquet('pi_mensal.parquet')
+    # Carregar apenas colunas essenciais
+    cols_para_carregar = [
+        'estado', 'produto', 'ano', 'mes', 
+        'quantidade_produzida', 'chuva_total', 
+        'radiacao_solar_total', 'temperatura_media'
+    ]
+    
+    try:
+        df = pd.read_parquet('pi_mensal.parquet', columns=cols_para_carregar)
+    except Exception:
+        df = pd.read_parquet('pi_mensal.parquet')
 
+    # Limpeza de texto
     for col in ['estado', 'produto', 'mes']:
         if col in df.columns:
             df[col] = df[col].astype(str).str.replace('"', '').str.strip()
 
+    # Downcasting numérico (float64 -> float32 para economizar 50% de RAM)
     cols_num = ['quantidade_produzida', 'chuva_total', 'radiacao_solar_total', 'temperatura_media']
     for col in cols_num:
         if col in df.columns:
-            df[col] = df[col].astype(str).str.replace('"', '').str.strip()
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(np.float32)
+
+    if 'ano' in df.columns:
+        df['ano'] = pd.to_numeric(df['ano'], errors='coerce').fillna(2000).astype(np.int16)
 
     meses_map = {
         'Janeiro': 1, 'Fevereiro': 2, 'Março': 3, 'Abril': 4, 'Maio': 5, 'Junho': 6,
         'Julho': 7, 'Agosto': 8, 'Setembro': 9, 'Outubro': 10, 'Novembro': 11, 'Dezembro': 12
     }
     if 'mes' in df.columns:
-        df['mes_num'] = df['mes'].astype(str).map(meses_map).fillna(1).astype(int)
+        df['mes_num'] = df['mes'].astype(str).map(meses_map).fillna(1).astype(np.int8)
     else:
-        df['mes_num'] = 1
+        df['mes_num'] = np.int8(1)
 
+    # Ordenação e criação de Lags
     cols_ordem = [c for c in ['estado', 'produto', 'ano', 'mes_num'] if c in df.columns]
     df = df.sort_values(by=cols_ordem).reset_index(drop=True)
 
     for col in ['chuva_total', 'radiacao_solar_total', 'temperatura_media']:
         for lag in [1, 2, 3]:
-            df[f'{col}_lag{lag}'] = df.groupby(['estado', 'produto'])[col].shift(lag)
+            df[f'{col}_lag{lag}'] = df.groupby(['estado', 'produto'])[col].shift(lag).astype(np.float32)
 
-    return df.fillna(0)
+    df = df.fillna(0)
+    gc.collect()  # Libera memória não utilizada
+    return df
 
 df_ml = carregar_e_processar_dados()
 
 # ------------------------------------------------------------------------------
-# 2. CÁLCULOS ESTATÍSTICOS DE SPEARMAN POR ESTADO
+# 2. CÁLCULOS ESTATÍSTICOS DE SPEARMAN OTIMIZADOS
 # ------------------------------------------------------------------------------
 @st.cache_data
 def calcular_sensibilidade_estados(df_input):
@@ -183,8 +195,8 @@ def calcular_sensibilidade_estados(df_input):
         info[est] = {
             'produto_sensivel': melhor_prod,
             'variavel_critica': TRADUCAO_VARIAVEIS.get(melhor_var, melhor_var),
-            'correlacao': round(val_corr, 2),
-            'sensibilidade_pct': f"{abs(val_corr)*100:.1f}%"
+            'correlacao': round(float(val_corr), 2),
+            'sensibilidade_pct': f"{abs(float(val_corr))*100:.1f}%"
         }
     return info
 
@@ -310,13 +322,6 @@ with aba3:
     df_ml_ready = df_ml[df_ml['quantidade_produzida'] > 0].copy()
     X = df_ml_ready[colunas_cat + colunas_climaticas]
     y = df_ml_ready['quantidade_produzida']
-
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ('num', StandardScaler(), colunas_climaticas),
-            ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), colunas_cat)
-        ]
-    )
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
