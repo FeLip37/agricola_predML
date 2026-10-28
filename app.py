@@ -22,7 +22,7 @@ st.set_page_config(
 )
 
 # ------------------------------------------------------------------------------
-# INJEÇÃO CSS: FIX DE ILEGIBILIDADE DO SELECTBOX E TEMA CLARO CORPORATIVO
+# INJEÇÃO CSS: FIX DE CONTRASTE DO SELECTBOX E TEMA CLARO CORPORATIVO
 # ------------------------------------------------------------------------------
 st.markdown("""
     <style>
@@ -49,7 +49,7 @@ st.markdown("""
         font-family: 'Inter', sans-serif !important;
     }
 
-    /* FIX DEFINITIVO PARA O MENU SUSPENSO (SELECTBOX / DROPDOWN) */
+    /* CONTRASTE PARA O MENU SUSPENSO (SELECTBOX) */
     div[data-baseweb="select"] > div {
         background-color: #FFFFFF !important;
         color: #111827 !important;
@@ -195,12 +195,14 @@ def carregar_e_processar_dados():
 df_ml = carregar_e_processar_dados()
 
 # ------------------------------------------------------------------------------
-# 2. PRÉ-CÁLCULO ESTATÍSTICO DE SPEARMAN
+# 2. PRÉ-CÁLCULO DE SENSIBILIDADES (CORRIGIDO: FILTRA APENAS PRODUÇÃO REAL > 0)
 # ------------------------------------------------------------------------------
 @st.cache_data
 def precalcular_todas_sensibilidades(df_input):
     cols_analise = [c for c in df_input.columns if 'lag' in c or c in ['chuva_total', 'radiacao_solar_total', 'temperatura_media']]
-    df_valid = df_input[df_input['quantidade_produzida'] > 0]
+    
+    # Exige produção agrícola real (>0) para evitar distorção por zeros seguidos
+    df_valid = df_input[df_input['quantidade_produzida'] > 0].copy()
     
     sensib_map = {}
     visao_geral = {}
@@ -208,27 +210,31 @@ def precalcular_todas_sensibilidades(df_input):
     grouped = df_valid.groupby(['estado', 'produto'])
     
     for (est, prod), group in grouped:
-        if len(group) >= 4 and group['quantidade_produzida'].std() > 0:
-            corrs = group[['quantidade_produzida'] + cols_analise].corr(method='spearman')['quantidade_produzida'].drop('quantidade_produzida').dropna()
-            if not corrs.empty:
-                v_max = corrs.abs().idxmax()
-                c_val = float(corrs[v_max])
-                abs_c = abs(c_val)
+        # Exige histórico mínimo de 12 meses produtivos e variação real
+        if len(group) >= 12 and group['quantidade_produzida'].std() > 0:
+            cols_validas = [c for c in cols_analise if group[c].std() > 0]
+            
+            if cols_validas:
+                corrs = group[['quantidade_produzida'] + cols_validas].corr(method='spearman')['quantidade_produzida'].drop('quantidade_produzida').dropna()
+                if not corrs.empty:
+                    v_max = corrs.abs().idxmax()
+                    c_val = float(corrs[v_max])
+                    abs_c = abs(c_val)
 
-                item = {
-                    'produto_sensivel': prod,
-                    'variavel_critica': TRADUCAO_VARIAVEIS.get(v_max, v_max),
-                    'correlacao': round(c_val, 2),
-                    'sensibilidade_pct': f"{abs_c*100:.1f}%",
-                    'abs_corr': abs_c
-                }
+                    item = {
+                        'produto_sensivel': prod,
+                        'variavel_critica': TRADUCAO_VARIAVEIS.get(v_max, v_max),
+                        'correlacao': round(c_val, 2),
+                        'sensibilidade_pct': f"{abs_c*100:.1f}%",
+                        'abs_corr': abs_c
+                    }
 
-                if prod not in sensib_map:
-                    sensib_map[prod] = {}
-                sensib_map[prod][est] = item
+                    if prod not in sensib_map:
+                        sensib_map[prod] = {}
+                    sensib_map[prod][est] = item
 
-                if est not in visao_geral or abs_c > visao_geral[est]['abs_corr']:
-                    visao_geral[est] = item
+                    if est not in visao_geral or abs_c > visao_geral[est]['abs_corr']:
+                        visao_geral[est] = item
 
     sensib_map["Visão Geral (Cultura Mais Sensível por Estado)"] = visao_geral
     return sensib_map
