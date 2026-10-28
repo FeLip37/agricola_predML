@@ -24,13 +24,13 @@ st.set_page_config(
 )
 
 # ------------------------------------------------------------------------------
-# INJEÇÃO CSS: TEMA CLARO CORPORATIVO & FILTRO FLUTUANTE SOBRE O MAPA
+# INJEÇÃO CSS: TEMA CLARO, ESPAÇAMENTO DO TOPO E ELIMINAÇÃO DO VERMELHO
 # ------------------------------------------------------------------------------
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-    /* FORÇAR TEMA CLARO E FUNDO BRANCO */
+    /* FORÇAR TEMA CLARO E AFASTAR CABEÇALHO DO TOPO DA TELA */
     html, body, [data-testid="stAppViewContainer"], .stApp, main, header, section {
         background-color: #FFFFFF !important;
         color: #111827 !important;
@@ -39,10 +39,12 @@ st.markdown("""
 
     header[data-testid="stHeader"] {
         background-color: #FFFFFF !important;
+        height: 3rem !important;
     }
 
+    /* Padding superior aumentado (4rem) para o título nunca ser cortado */
     .block-container {
-        padding-top: 2rem !important;
+        padding-top: 4.5rem !important;
         padding-bottom: 2rem !important;
     }
 
@@ -55,7 +57,7 @@ st.markdown("""
         color: #4B5563 !important;
     }
 
-    /* ABAS DE NAVEGAÇÃO EM VERDE AGRO (#15803D) */
+    /* ELIMINAR VERMELHO/ROSA DAS ABAS -> VERDE AGRO (#15803D) */
     button[data-baseweb="tab"] {
         background-color: transparent !important;
         border: none !important;
@@ -105,23 +107,6 @@ st.markdown("""
         border: 1px solid #E5E7EB !important;
         border-left: 4px solid #15803D !important;
     }
-
-    /* CONTAINER DO MAPA COM OVERLAY FLUTUANTE */
-    .map-container-relative {
-        position: relative;
-        width: 100%;
-    }
-
-    /* CAIXA DE FILTRO FLUTUANTE SOBRE O MAPA */
-    .map-floating-card {
-        background: rgba(255, 255, 255, 0.96);
-        backdrop-filter: blur(4px);
-        border: 1px solid #E5E7EB;
-        border-radius: 8px;
-        padding: 12px 16px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-        margin-bottom: 12px;
-    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -147,7 +132,7 @@ TRADUCAO_VARIAVEIS = {
 }
 
 # ------------------------------------------------------------------------------
-# 1. CARREGAMENTO COM OTIMIZAÇÃO DE MEMÓRIA (DOWNCASTING)
+# 1. CARREGAMENTO E PROCESSAMENTO (OTIMIZADO)
 # ------------------------------------------------------------------------------
 @st.cache_data
 def carregar_e_processar_dados():
@@ -197,7 +182,7 @@ def carregar_e_processar_dados():
 df_ml = carregar_e_processar_dados()
 
 # ------------------------------------------------------------------------------
-# 2. PRÉ-CÁLCULO TOTAL DAS CORRELAÇÕES (ZERO LAG)
+# 2. PRÉ-CÁLCULO DE SENSIBILIDADES (CACHE DE ALTA PERFORMANCE)
 # ------------------------------------------------------------------------------
 @st.cache_data
 def precalcular_todas_sensibilidades(df_input):
@@ -250,11 +235,11 @@ img_b64 = get_image_base64(icone_path)
 
 if img_b64:
     st.markdown(f"""
-        <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 6px;">
-            <img src="data:image/png;base64,{img_b64}" style="width: 44px; height: 44px; object-fit: contain;" />
-            <h1 style="margin: 0; padding: 0; font-size: 1.75rem; font-weight: 700; color: #111827 !important;">Plataforma de Análise Climatológica e Agrícola do Brasil</h1>
+        <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 4px;">
+            <img src="data:image/png;base64,{img_b64}" style="width: 42px; height: 42px; object-fit: contain;" />
+            <h1 style="margin: 0; padding: 0; font-size: 1.7rem; font-weight: 700; color: #111827 !important;">Plataforma de Análise Climatológica e Agrícola do Brasil</h1>
         </div>
-        <p style="margin: 0 0 16px 0; color: #4B5563 !important; font-size: 0.92rem;">Análise espaço-temporal e modelagem estatística entre dados meteorológicos (Open-Meteo) e safras agrícolas (IBGE/SIDRA).</p>
+        <p style="margin: 0 0 14px 0; color: #4B5563 !important; font-size: 0.90rem;">Análise espaço-temporal e modelagem estatística entre dados meteorológicos (Open-Meteo) e safras agrícolas (IBGE/SIDRA).</p>
     """, unsafe_allow_html=True)
 else:
     st.markdown('<h1 style="color: #111827 !important;">Plataforma de Análise Climatológica e Agrícola do Brasil</h1>', unsafe_allow_html=True)
@@ -272,22 +257,20 @@ aba1, aba2, aba3 = st.tabs([
 ])
 
 # ------------------------------------------------------------------------------
-# ABA 1: MAPA GEOGRÁFICO DE ZONAS COM FILTRO INTEGRADO
+# ABA 1: MAPA GEOGRÁFICO DE ZONAS (SELETOR COMPACTO)
 # ------------------------------------------------------------------------------
 with aba1:
-    st.markdown('<h3 style="color: #111827 !important;">Sensibilidade Climática das Culturas Agrícolas por Estado</h3>', unsafe_allow_html=True)
+    st.markdown('<h3 style="color: #111827 !important; margin-bottom: 4px;">Sensibilidade Climática das Culturas Agrícolas por Estado</h3>', unsafe_allow_html=True)
 
-    # BARRA/CARD DE CONTROLE DO MAPA (ESTILO PAINEL INTEGRADO)
     opcoes_filtro = ["Visão Geral (Cultura Mais Sensível por Estado)"] + sorted([k for k in matriz_sensibilidade.keys() if k != "Visão Geral (Cultura Mais Sensível por Estado)"])
 
-    st.markdown('<div class="map-floating-card">', unsafe_allow_html=True)
-    col_f1, col_f2 = st.columns([0.45, 0.55])
-    
-    with col_f1:
+    # Seletor integrado em uma coluna limpa
+    col_sel, col_info = st.columns([0.40, 0.60])
+    with col_sel:
         produto_selecionado = st.selectbox(
             "Filtrar cultura no mapa:",
             opcoes_filtro,
-            label_visibility="visible"
+            label_visibility="collapsed"
         )
 
     info_estados = matriz_sensibilidade.get(produto_selecionado, {})
@@ -298,13 +281,12 @@ with aba1:
         if est_max[0] and est_max[1].get('abs_corr', 0) > 0:
             destaque = (est_max[0], est_max[1])
 
-    with col_f2:
+    with col_info:
         if destaque:
             st.info(f"**Maior Impacto em {produto_selecionado}:** {destaque[0]} "
                     f"({destaque[1]['sensibilidade_pct']} - {destaque[1]['variavel_critica']})")
         else:
             st.caption("Passe o cursor sobre a área de qualquer estado para visualizar os detalhes climáticos.")
-    st.markdown('</div>', unsafe_allow_html=True)
 
     @st.cache_data
     def carregar_geojson():
@@ -342,7 +324,7 @@ with aba1:
         feature['properties']['correlacao'] = str(st_info['correlacao'])
         feature['properties']['sensibilidade'] = st_info['sensibilidade_pct']
 
-    # MAPA COM VISUALIZAÇÃO GLOBAL SUAVE (ESRI LIGHT GRAY CANVAS - SEM API KEY)
+    # MAPA COM NAVEGAÇÃO SUAVE E SEM MARCA D'ÁGUA DE API KEY
     mapa = folium.Map(
         location=[-14.2350, -51.9253], 
         zoom_start=4,
@@ -350,7 +332,6 @@ with aba1:
         zoom_control=True
     )
 
-    # Camada de mapa leve em tons claros mantendo países vizinhos visíveis
     folium.TileLayer(
         tiles='https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
         name='Esri Light Gray Canvas',
