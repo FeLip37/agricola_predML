@@ -24,86 +24,33 @@ st.set_page_config(
 )
 
 # ------------------------------------------------------------------------------
-# ESTILIZAÇÃO CSS CUSTOMIZADA (TEMA BRANCO AGRO & SEM TONS DE VERMELHO)
+# ESTILIZAÇÃO CSS CUSTOMIZADA (FONTE CORPORATIVA E AJUSTES DE ESPAÇAMENTO)
 # ------------------------------------------------------------------------------
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-    /* Fundo Branco do App e Tipografia */
-    html, body, [class*="css"] {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-        color: #1F2937 !important;
+    /* Aplicação da Tipografia Global */
+    html, body, [class*="css"], p, span, div, label {
+        font-family: 'Inter', -apple-system, sans-serif !important;
     }
 
-    .stApp {
-        background-color: #FFFFFF !important;
+    h1, h2, h3, h4, h5, h6 {
+        font-family: 'Inter', sans-serif !important;
+        font-weight: 600 !important;
+        letter-spacing: -0.02em !important;
     }
 
-    /* 1. Deixar a barra superior do Streamlit 100% branca */
-    header[data-testid="stHeader"] {
-        background-color: #FFFFFF !important;
-    }
-
-    /* Ajuste de espaçamento do topo */
+    /* Ajuste de espaçamento do topo para reduzir o espaço em branco */
     .block-container {
         padding-top: 1.5rem !important;
         padding-bottom: 2rem !important;
     }
 
-    /* 2. Remover tons de vermelho das abas e aplicar Verde Agro */
-    button[data-baseweb="tab"] {
-        font-family: 'Inter', sans-serif !important;
-        font-weight: 500 !important;
-        color: #4B5563 !important;
-        background-color: transparent !important;
-        border-bottom: 2px solid #E5E7EB !important;
-        padding: 10px 16px !important;
-    }
-
-    button[data-baseweb="tab"]:hover {
-        color: #15803D !important;
-    }
-
-    button[data-baseweb="tab"][aria-selected="true"] {
-        color: #15803D !important;
-        border-bottom-color: #15803D !important;
-        font-weight: 600 !important;
-    }
-
-    /* Linha indicadora ativa da aba */
-    div[data-baseweb="tab-highlight"] {
-        background-color: #15803D !important;
-    }
-
-    /* Botões e Interações */
-    .stButton>button, .stDownloadButton>button {
-        background-color: #15803D !important;
-        color: #FFFFFF !important;
-        border-radius: 6px !important;
-        border: none !important;
-        font-family: 'Inter', sans-serif !important;
-        font-weight: 500 !important;
-        padding: 0.6rem 1.2rem !important;
-    }
-
-    .stButton>button:hover, .stDownloadButton>button:hover {
-        background-color: #166534 !important;
-        color: #FFFFFF !important;
-    }
-
-    [data-testid="stMetricValue"] {
-        font-family: 'Inter', sans-serif !important;
-        font-weight: 700 !important;
-        color: #15803D !important;
-    }
-
+    /* Bordas mais suaves para caixas de alerta/info */
     .stAlert {
-        background-color: #F9FAFB !important;
-        color: #374151 !important;
-        border: 1px solid #E5E7EB !important;
-        border-left: 4px solid #15803D !important;
         border-radius: 6px !important;
+        border-left: 4px solid #15803D !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -130,7 +77,7 @@ TRADUCAO_VARIAVEIS = {
 }
 
 # ------------------------------------------------------------------------------
-# 1. CARREGAMENTO COM OTIMIZAÇÃO DE MEMÓRIA (DOWNCASTING)
+# 1. CARREGAMENTO COM OTIMIZAÇÃO DE MEMÓRIA (DOWNCASTING E GARBAGE COLLECTION)
 # ------------------------------------------------------------------------------
 @st.cache_data
 def carregar_e_processar_dados():
@@ -174,7 +121,7 @@ def carregar_e_processar_dados():
             df[f'{col}_lag{lag}'] = df.groupby(['estado', 'produto'])[col].shift(lag).astype(np.float32)
 
     df = df.fillna(0)
-    gc.collect()
+    gc.collect()  # Força a libertação de memória RAM
     return df
 
 df_ml = carregar_e_processar_dados()
