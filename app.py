@@ -24,20 +24,19 @@ st.set_page_config(
 )
 
 # ------------------------------------------------------------------------------
-# INJEÇÃO CSS: TEMA CLARO CORPORATIVO (BRANCO & VERDE AGRO)
+# INJEÇÃO CSS: TEMA CLARO CORPORATIVO & FILTRO FLUTUANTE SOBRE O MAPA
 # ------------------------------------------------------------------------------
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-    /* 1. FORÇAR TEMA CLARO E FUNDO BRANCO EM TODOS OS CONTÊINERES */
+    /* FORÇAR TEMA CLARO E FUNDO BRANCO */
     html, body, [data-testid="stAppViewContainer"], .stApp, main, header, section {
         background-color: #FFFFFF !important;
         color: #111827 !important;
         font-family: 'Inter', -apple-system, sans-serif !important;
     }
 
-    /* 2. BARRA SUPERIOR BRANCA E ESPAÇAMENTO DO TOPO */
     header[data-testid="stHeader"] {
         background-color: #FFFFFF !important;
     }
@@ -47,7 +46,6 @@ st.markdown("""
         padding-bottom: 2rem !important;
     }
 
-    /* 3. TIPOGRAFIA E TEXTOS ESCUROS */
     h1, h2, h3, h4, h5, h6, p, span, div, label, caption {
         color: #111827 !important;
         font-family: 'Inter', sans-serif !important;
@@ -57,7 +55,7 @@ st.markdown("""
         color: #4B5563 !important;
     }
 
-    /* 4. ABAS DE NAVEGAÇÃO EM VERDE AGRO (#15803D) */
+    /* ABAS DE NAVEGAÇÃO EM VERDE AGRO (#15803D) */
     button[data-baseweb="tab"] {
         background-color: transparent !important;
         border: none !important;
@@ -82,7 +80,7 @@ st.markdown("""
         background-color: #E5E7EB !important;
     }
 
-    /* 5. BOTÕES, SELETORES E MÉTRICAS */
+    /* BOTÕES E MÉTRICAS */
     .stButton>button, .stDownloadButton>button {
         background-color: #15803D !important;
         color: #FFFFFF !important;
@@ -106,6 +104,23 @@ st.markdown("""
         color: #374151 !important;
         border: 1px solid #E5E7EB !important;
         border-left: 4px solid #15803D !important;
+    }
+
+    /* CONTAINER DO MAPA COM OVERLAY FLUTUANTE */
+    .map-container-relative {
+        position: relative;
+        width: 100%;
+    }
+
+    /* CAIXA DE FILTRO FLUTUANTE SOBRE O MAPA */
+    .map-floating-card {
+        background: rgba(255, 255, 255, 0.96);
+        backdrop-filter: blur(4px);
+        border: 1px solid #E5E7EB;
+        border-radius: 8px;
+        padding: 12px 16px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        margin-bottom: 12px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -132,7 +147,7 @@ TRADUCAO_VARIAVEIS = {
 }
 
 # ------------------------------------------------------------------------------
-# 1. CARREGAMENTO E PROCESSAMENTO COM OTIMIZAÇÃO DE MEMÓRIA (DOWNCASTING)
+# 1. CARREGAMENTO COM OTIMIZAÇÃO DE MEMÓRIA (DOWNCASTING)
 # ------------------------------------------------------------------------------
 @st.cache_data
 def carregar_e_processar_dados():
@@ -182,7 +197,7 @@ def carregar_e_processar_dados():
 df_ml = carregar_e_processar_dados()
 
 # ------------------------------------------------------------------------------
-# 2. PRÉ-CÁLCULO TOTAL DAS CORRELAÇÕES (EVITA O LAG COMPLETAMENTE)
+# 2. PRÉ-CÁLCULO TOTAL DAS CORRELAÇÕES (ZERO LAG)
 # ------------------------------------------------------------------------------
 @st.cache_data
 def precalcular_todas_sensibilidades(df_input):
@@ -257,36 +272,39 @@ aba1, aba2, aba3 = st.tabs([
 ])
 
 # ------------------------------------------------------------------------------
-# ABA 1: MAPA GEOGRÁFICO VETORIAL EXCLUSIVO DO BRASIL (ZERO LAG & INSTANTÂNEO)
+# ABA 1: MAPA GEOGRÁFICO DE ZONAS COM FILTRO INTEGRADO
 # ------------------------------------------------------------------------------
 with aba1:
     st.markdown('<h3 style="color: #111827 !important;">Sensibilidade Climática das Culturas Agrícolas por Estado</h3>', unsafe_allow_html=True)
 
+    # BARRA/CARD DE CONTROLE DO MAPA (ESTILO PAINEL INTEGRADO)
     opcoes_filtro = ["Visão Geral (Cultura Mais Sensível por Estado)"] + sorted([k for k in matriz_sensibilidade.keys() if k != "Visão Geral (Cultura Mais Sensível por Estado)"])
 
-    col_sel, col_info = st.columns([0.45, 0.55])
-    with col_sel:
+    st.markdown('<div class="map-floating-card">', unsafe_allow_html=True)
+    col_f1, col_f2 = st.columns([0.45, 0.55])
+    
+    with col_f1:
         produto_selecionado = st.selectbox(
-            "Selecione uma cultura para filtrar no mapa:",
-            opcoes_filtro
+            "Filtrar cultura no mapa:",
+            opcoes_filtro,
+            label_visibility="visible"
         )
 
-    # Resgata os dados pré-calculados de forma instantânea $O(1)$
     info_estados = matriz_sensibilidade.get(produto_selecionado, {})
 
-    # Localizar o estado de maior sensibilidade para a cultura escolhida
     destaque = None
     if produto_selecionado != "Visão Geral (Cultura Mais Sensível por Estado)" and info_estados:
         est_max = max(info_estados.items(), key=lambda x: x[1].get('abs_corr', 0), default=(None, None))
         if est_max[0] and est_max[1].get('abs_corr', 0) > 0:
             destaque = (est_max[0], est_max[1])
 
-    with col_info:
+    with col_f2:
         if destaque:
-            st.info(f"**Estado de Maior Impacto Climático para {produto_selecionado}:** {destaque[0]} "
-                    f"({destaque[1]['sensibilidade_pct']} de sensibilidade - {destaque[1]['variavel_critica']})")
+            st.info(f"**Maior Impacto em {produto_selecionado}:** {destaque[0]} "
+                    f"({destaque[1]['sensibilidade_pct']} - {destaque[1]['variavel_critica']})")
         else:
-            st.caption("Passe o cursor sobre a área de qualquer estado no mapa para visualizar os detalhes de sensibilidade.")
+            st.caption("Passe o cursor sobre a área de qualquer estado para visualizar os detalhes climáticos.")
+    st.markdown('</div>', unsafe_allow_html=True)
 
     @st.cache_data
     def carregar_geojson():
@@ -324,7 +342,7 @@ with aba1:
         feature['properties']['correlacao'] = str(st_info['correlacao'])
         feature['properties']['sensibilidade'] = st_info['sensibilidade_pct']
 
-    # MAPA VETORIAL PURO (tiles=None -> Sem mapa mundi, sem marcas d'água e ultra rápido)
+    # MAPA COM VISUALIZAÇÃO GLOBAL SUAVE (ESRI LIGHT GRAY CANVAS - SEM API KEY)
     mapa = folium.Map(
         location=[-14.2350, -51.9253], 
         zoom_start=4,
@@ -332,81 +350,23 @@ with aba1:
         zoom_control=True
     )
 
+    # Camada de mapa leve em tons claros mantendo países vizinhos visíveis
+    folium.TileLayer(
+        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+        name='Esri Light Gray Canvas',
+        attr='Esri, HERE, Garmin, USGS, NGA, EPA, USDA, NPS'
+    ).add_to(mapa)
+
     folium.GeoJson(
         geo_data,
         style_function=lambda f: {
             'fillColor': f['properties']['cor_regiao'], 
             'color': '#FFFFFF', 
             'weight': 1.5, 
-            'fillOpacity': 0.70
+            'fillOpacity': 0.65
         },
         highlight_function=lambda f: {
             'fillColor': f['properties']['cor_regiao'], 
             'color': '#111827', 
             'weight': 2.5, 
-            'fillOpacity': 0.90
-        },
-        tooltip=folium.GeoJsonTooltip(
-            fields=['name', 'regiao', 'produto', 'variavel', 'correlacao', 'sensibilidade'],
-            aliases=['Estado:', 'Região:', 'Cultura Analisada:', 'Fase Climática Crítica:', 'Índice Spearman:', 'Sensibilidade Climática:'],
-            sticky=True,
-            style="background-color: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 6px; padding: 10px; font-family: Inter, sans-serif; font-size: 13px; color: #1F2937;"
-        )
-    ).add_to(mapa)
-
-    st_folium(mapa, width="100%", height=520, returned_objects=[])
-
-# ------------------------------------------------------------------------------
-# ABA 2: MATRIZ DE SENSIBILIDADE
-# ------------------------------------------------------------------------------
-with aba2:
-    st.markdown('<h3 style="color: #111827 !important;">Resumo Estatístico da Correlação de Spearman por Estado</h3>', unsafe_allow_html=True)
-    df_resumo = pd.DataFrame.from_dict(info_estados, orient='index')
-    if not df_resumo.empty and 'abs_corr' in df_resumo.columns:
-        df_resumo = df_resumo.drop(columns=['abs_corr'])
-    if not df_resumo.empty:
-        df_resumo.columns = ['Cultura Analisada', 'Fase Climática Crítica', 'Correlação (Spearman)', 'Sensibilidade Climática (%)']
-    st.dataframe(df_resumo, use_container_width=True)
-
-# ------------------------------------------------------------------------------
-# ABA 3: MÓDULO DE PREPARAÇÃO PARA MACHINE LEARNING
-# ------------------------------------------------------------------------------
-with aba3:
-    st.markdown('<h3 style="color: #111827 !important;">Módulo de Engenharia de Recursos para Machine Learning</h3>', unsafe_allow_html=True)
-    st.info("Estruturação das matrizes de entrada (X) e alvo (y) com pré-processamento para integração posterior via Replit ou API externa.")
-
-    colunas_climaticas = [c for c in df_ml.columns if 'lag' in c or c in ['chuva_total', 'radiacao_solar_total', 'temperatura_media']]
-    colunas_cat = ['estado', 'produto', 'mes_num']
-
-    df_ml_ready = df_ml[df_ml['quantidade_produzida'] > 0].copy()
-    X = df_ml_ready[colunas_cat + colunas_climaticas]
-    y = df_ml_ready['quantidade_produzida']
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    c1, c2 = st.columns(2)
-    c1.metric("Amostras de Treino (X_train)", f"{X_train.shape[0]:,} linhas")
-    c2.metric("Amostras de Teste (X_test)", f"{X_test.shape[0]:,} linhas")
-
-    st.write("Amostra da Matriz de Entrada (Features X_train):")
-    st.dataframe(X_train.head(10), use_container_width=True)
-
-    st.write("Amostra do Alvo de Produção (Target y_train):")
-    st.dataframe(y_train.head(10), use_container_width=True)
-
-    st.markdown('<h4 style="color: #111827 !important;">Exportação de Dados</h4>', unsafe_allow_html=True)
-    col_btn1, col_btn2 = st.columns(2)
-    with col_btn1:
-        st.download_button(
-            label="Baixar X_train_agricola.csv",
-            data=X_train.to_csv(index=False),
-            file_name="X_train_agricola.csv",
-            mime="text/csv"
-        )
-    with col_btn2:
-        st.download_button(
-            label="Baixar y_train_agricola.csv",
-            data=y_train.to_csv(index=False),
-            file_name="y_train_agricola.csv",
-            mime="text/csv"
-        )
+            'fillOpacity': 0.
