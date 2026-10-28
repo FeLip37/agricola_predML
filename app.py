@@ -13,7 +13,7 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 
 # ------------------------------------------------------------------------------
-# CONFIGURAÇÃO DA PÁGINA E ÍCONE DO NAVEGADOR
+# CONFIGURAÇÃO DA PÁGINA
 # ------------------------------------------------------------------------------
 icone_path = "icon.png" if os.path.exists("icon.png") else None
 
@@ -24,32 +24,90 @@ st.set_page_config(
 )
 
 # ------------------------------------------------------------------------------
-# ESTILIZAÇÃO CSS CUSTOMIZADA (FONTE CORPORATIVA E AJUSTES DE ESPAÇAMENTO)
+# INJEÇÃO CSS: FORÇAR TEMA CLARO (BRANCO) E REMOVER VERMELHO
 # ------------------------------------------------------------------------------
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-    /* Aplicação da Tipografia Global */
-    html, body, [class*="css"], p, span, div, label {
+    /* 1. FORÇAR TEMA CLARO E FUNDO BRANCO EM TODOS OS CONTÊINERES */
+    html, body, [data-testid="stAppViewContainer"], .stApp, main, header, section {
+        background-color: #FFFFFF !important;
+        color: #111827 !important;
         font-family: 'Inter', -apple-system, sans-serif !important;
     }
 
-    h1, h2, h3, h4, h5, h6 {
-        font-family: 'Inter', sans-serif !important;
-        font-weight: 600 !important;
-        letter-spacing: -0.02em !important;
+    /* 2. CORRIGIR BARRA SUPERIOR E ESPAÇAMENTO PARA NÃO COBRIR O TÍTULO */
+    header[data-testid="stHeader"] {
+        background-color: #FFFFFF !important;
     }
 
-    /* Ajuste de espaçamento do topo para reduzir o espaço em branco */
     .block-container {
-        padding-top: 1.5rem !important;
+        padding-top: 3.5rem !important;
         padding-bottom: 2rem !important;
     }
 
-    /* Bordas mais suaves para caixas de alerta/info */
-    .stAlert {
+    /* 3. GARANTIR QUE TEXTOS E TÍTULOS FIQUEM ESCUROS E VISÍVEIS */
+    h1, h2, h3, h4, h5, h6, p, span, div, label, caption {
+        color: #111827 !important;
+        font-family: 'Inter', sans-serif !important;
+    }
+
+    /* 4. SUBTITULOS E LEGENDA EM CINZA ESCURO */
+    .stCaption, p {
+        color: #4B5563 !important;
+    }
+
+    /* 5. ELIMINAR VERMELHO/ROSA DAS ABAS E APLICAR VERDE AGRO (#15803D) */
+    button[data-baseweb="tab"] {
+        background-color: transparent !important;
+        border: none !important;
+        padding: 10px 16px !important;
+    }
+
+    button[data-baseweb="tab"] * {
+        color: #4B5563 !important;
+        font-weight: 500 !important;
+    }
+
+    button[data-baseweb="tab"][aria-selected="true"] * {
+        color: #15803D !important;
+        font-weight: 700 !important;
+    }
+
+    /* Linha indicadora da aba ativa */
+    div[data-baseweb="tab-highlight"] {
+        background-color: #15803D !important;
+    }
+
+    div[data-baseweb="tab-border"] {
+        background-color: #E5E7EB !important;
+    }
+
+    /* 6. BOTÕES E COMPONENTES VERDES */
+    .stButton>button, .stDownloadButton>button {
+        background-color: #15803D !important;
+        color: #FFFFFF !important;
         border-radius: 6px !important;
+        border: none !important;
+        font-weight: 500 !important;
+        padding: 0.6rem 1.2rem !important;
+    }
+
+    .stButton>button:hover, .stDownloadButton>button:hover {
+        background-color: #166534 !important;
+        color: #FFFFFF !important;
+    }
+
+    /* Métricas e Caixas de Alerta */
+    [data-testid="stMetricValue"] {
+        color: #15803D !important;
+    }
+
+    .stAlert {
+        background-color: #F9FAFB !important;
+        color: #374151 !important;
+        border: 1px solid #E5E7EB !important;
         border-left: 4px solid #15803D !important;
     }
     </style>
@@ -77,7 +135,7 @@ TRADUCAO_VARIAVEIS = {
 }
 
 # ------------------------------------------------------------------------------
-# 1. CARREGAMENTO COM OTIMIZAÇÃO DE MEMÓRIA (DOWNCASTING E GARBAGE COLLECTION)
+# 1. CARREGAMENTO DE DADOS (OTIMIZADO)
 # ------------------------------------------------------------------------------
 @st.cache_data
 def carregar_e_processar_dados():
@@ -121,7 +179,7 @@ def carregar_e_processar_dados():
             df[f'{col}_lag{lag}'] = df.groupby(['estado', 'produto'])[col].shift(lag).astype(np.float32)
 
     df = df.fillna(0)
-    gc.collect()  # Força a libertação de memória RAM
+    gc.collect()
     return df
 
 df_ml = carregar_e_processar_dados()
@@ -162,7 +220,7 @@ def calcular_sensibilidade_estados(df_input):
 info_estados = calcular_sensibilidade_estados(df_ml)
 
 # ------------------------------------------------------------------------------
-# CABEÇALHO DO DASHBOARD (FLEXBOX PARA ALINHAMENTO COMPACTO)
+# CABEÇALHO DO DASHBOARD
 # ------------------------------------------------------------------------------
 def get_image_base64(path):
     if path and os.path.exists(path):
@@ -174,16 +232,14 @@ img_b64 = get_image_base64(icone_path)
 
 if img_b64:
     st.markdown(f"""
-        <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 8px;">
-            <img src="data:image/png;base64,{img_b64}" style="width: 48px; height: 48px; object-fit: contain;" />
-            <div>
-                <h1 style="margin: 0; padding: 0; font-size: 1.8rem; font-weight: 700; color: #111827;">Plataforma de Análise Climatológica e Agrícola do Brasil</h1>
-            </div>
+        <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 6px;">
+            <img src="data:image/png;base64,{img_b64}" style="width: 44px; height: 44px; object-fit: contain;" />
+            <h1 style="margin: 0; padding: 0; font-size: 1.75rem; font-weight: 700; color: #111827 !important;">Plataforma de Análise Climatológica e Agrícola do Brasil</h1>
         </div>
-        <p style="margin: 0 0 16px 0; color: #6B7280; font-size: 0.92rem;">Análise espaço-temporal e modelagem estatística entre dados meteorológicos (Open-Meteo) e safras agrícolas (IBGE/SIDRA).</p>
+        <p style="margin: 0 0 16px 0; color: #4B5563 !important; font-size: 0.92rem;">Análise espaço-temporal e modelagem estatística entre dados meteorológicos (Open-Meteo) e safras agrícolas (IBGE/SIDRA).</p>
     """, unsafe_allow_html=True)
 else:
-    st.title("Plataforma de Análise Climatológica e Agrícola do Brasil")
+    st.markdown('<h1 style="color: #111827 !important;">Plataforma de Análise Climatológica e Agrícola do Brasil</h1>', unsafe_allow_html=True)
     st.caption("Análise espaço-temporal e modelagem estatística entre dados meteorológicos (Open-Meteo) e safras agrícolas (IBGE/SIDRA).")
 
 st.divider()
@@ -201,7 +257,7 @@ aba1, aba2, aba3 = st.tabs([
 # ABA 1: MAPA GEOGRÁFICO DE ZONAS
 # ------------------------------------------------------------------------------
 with aba1:
-    st.subheader("Sensibilidade Climática das Culturas Agrícolas por Estado")
+    st.markdown('<h3 style="color: #111827 !important;">Sensibilidade Climática das Culturas Agrícolas por Estado</h3>', unsafe_allow_html=True)
     st.caption("Passe o cursor sobre a área de qualquer estado para visualizar a cultura de maior impacto e a fase climática crítica.")
 
     @st.cache_data
@@ -275,7 +331,7 @@ with aba1:
 # ABA 2: MATRIZ DE SENSIBILIDADE
 # ------------------------------------------------------------------------------
 with aba2:
-    st.subheader("Resumo Estatístico da Correlação de Spearman por Estado")
+    st.markdown('<h3 style="color: #111827 !important;">Resumo Estatístico da Correlação de Spearman por Estado</h3>', unsafe_allow_html=True)
     df_resumo = pd.DataFrame.from_dict(info_estados, orient='index')
     df_resumo.columns = ['Cultura Mais Afetada', 'Fase Climática Crítica', 'Correlação (Spearman)', 'Sensibilidade Climática (%)']
     st.dataframe(df_resumo, use_container_width=True)
@@ -284,7 +340,7 @@ with aba2:
 # ABA 3: MÓDULO DE PREPARAÇÃO PARA MACHINE LEARNING
 # ------------------------------------------------------------------------------
 with aba3:
-    st.subheader("Módulo de Engenharia de Recursos para Machine Learning")
+    st.markdown('<h3 style="color: #111827 !important;">Módulo de Engenharia de Recursos para Machine Learning</h3>', unsafe_allow_html=True)
     st.info("Estruturação das matrizes de entrada (X) e alvo (y) com pré-processamento para integração posterior via Replit ou API externa.")
 
     colunas_climaticas = [c for c in df_ml.columns if 'lag' in c or c in ['chuva_total', 'radiacao_solar_total', 'temperatura_media']]
@@ -306,7 +362,7 @@ with aba3:
     st.write("Amostra do Alvo de Produção (Target y_train):")
     st.dataframe(y_train.head(10), use_container_width=True)
 
-    st.subheader("Exportação de Dados")
+    st.markdown('<h4 style="color: #111827 !important;">Exportação de Dados</h4>', unsafe_allow_html=True)
     col_btn1, col_btn2 = st.columns(2)
     with col_btn1:
         st.download_button(
