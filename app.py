@@ -369,4 +369,69 @@ with aba1:
             'fillColor': f['properties']['cor_regiao'], 
             'color': '#111827', 
             'weight': 2.5, 
-            'fillOpacity': 0.
+            'fillOpacity': 0.85
+        },
+        tooltip=folium.GeoJsonTooltip(
+            fields=['name', 'regiao', 'produto', 'variavel', 'correlacao', 'sensibilidade'],
+            aliases=['Estado:', 'Região:', 'Cultura Analisada:', 'Fase Climática Crítica:', 'Índice Spearman:', 'Sensibilidade Climática:'],
+            sticky=True,
+            style="background-color: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 6px; padding: 10px; font-family: Inter, sans-serif; font-size: 13px; color: #1F2937;"
+        )
+    ).add_to(mapa)
+
+    st_folium(mapa, width="100%", height=530, returned_objects=[])
+
+# ------------------------------------------------------------------------------
+# ABA 2: MATRIZ DE SENSIBILIDADE
+# ------------------------------------------------------------------------------
+with aba2:
+    st.markdown('<h3 style="color: #111827 !important;">Resumo Estatístico da Correlação de Spearman por Estado</h3>', unsafe_allow_html=True)
+    df_resumo = pd.DataFrame.from_dict(info_estados, orient='index')
+    if not df_resumo.empty and 'abs_corr' in df_resumo.columns:
+        df_resumo = df_resumo.drop(columns=['abs_corr'])
+    if not df_resumo.empty:
+        df_resumo.columns = ['Cultura Analisada', 'Fase Climática Crítica', 'Correlação (Spearman)', 'Sensibilidade Climática (%)']
+    st.dataframe(df_resumo, use_container_width=True)
+
+# ------------------------------------------------------------------------------
+# ABA 3: MÓDULO DE PREPARAÇÃO PARA MACHINE LEARNING
+# ------------------------------------------------------------------------------
+with aba3:
+    st.markdown('<h3 style="color: #111827 !important;">Módulo de Engenharia de Recursos para Machine Learning</h3>', unsafe_allow_html=True)
+    st.info("Estruturação das matrizes de entrada (X) e alvo (y) com pré-processamento para integração posterior via Replit ou API externa.")
+
+    colunas_climaticas = [c for c in df_ml.columns if 'lag' in c or c in ['chuva_total', 'radiacao_solar_total', 'temperatura_media']]
+    colunas_cat = ['estado', 'produto', 'mes_num']
+
+    df_ml_ready = df_ml[df_ml['quantidade_produzida'] > 0].copy()
+    X = df_ml_ready[colunas_cat + colunas_climaticas]
+    y = df_ml_ready['quantidade_produzida']
+
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+    c1, c2 = st.columns(2)
+    c1.metric("Amostras de Treino (X_train)", f"{X_train.shape[0]:,} linhas")
+    c2.metric("Amostras de Teste (X_test)", f"{X_test.shape[0]:,} linhas")
+
+    st.write("Amostra da Matriz de Entrada (Features X_train):")
+    st.dataframe(X_train.head(10), use_container_width=True)
+
+    st.write("Amostra do Alvo de Produção (Target y_train):")
+    st.dataframe(y_train.head(10), use_container_width=True)
+
+    st.markdown('<h4 style="color: #111827 !important;">Exportação de Dados</h4>', unsafe_allow_html=True)
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        st.download_button(
+            label="Baixar X_train_agricola.csv",
+            data=X_train.to_csv(index=False),
+            file_name="X_train_agricola.csv",
+            mime="text/csv"
+        )
+    with col_btn2:
+        st.download_button(
+            label="Baixar y_train_agricola.csv",
+            data=y_train.to_csv(index=False),
+            file_name="y_train_agricola.csv",
+            mime="text/csv"
+        )
