@@ -24,7 +24,7 @@ st.set_page_config(
 )
 
 # ------------------------------------------------------------------------------
-# INJEÇÃO CSS: FORÇAR TEMA CLARO (BRANCO) E REMOVER VERMELHO
+# INJEÇÃO CSS: TEMA CLARO CORPORATIVO (BRANCO & VERDE AGRO)
 # ------------------------------------------------------------------------------
 st.markdown("""
     <style>
@@ -37,28 +37,27 @@ st.markdown("""
         font-family: 'Inter', -apple-system, sans-serif !important;
     }
 
-    /* 2. CORRIGIR BARRA SUPERIOR E ESPAÇAMENTO PARA NÃO COBRIR O TÍTULO */
+    /* 2. BARRA SUPERIOR BRANCA E ESPAÇAMENTO DO TOPO */
     header[data-testid="stHeader"] {
         background-color: #FFFFFF !important;
     }
 
     .block-container {
-        padding-top: 3.5rem !important;
+        padding-top: 3rem !important;
         padding-bottom: 2rem !important;
     }
 
-    /* 3. GARANTIR QUE TEXTOS E TÍTULOS FIQUEM ESCUROS E VISÍVEIS */
+    /* 3. TIPOGRAFIA E TEXTOS ESCUROS */
     h1, h2, h3, h4, h5, h6, p, span, div, label, caption {
         color: #111827 !important;
         font-family: 'Inter', sans-serif !important;
     }
 
-    /* 4. SUBTITULOS E LEGENDA EM CINZA ESCURO */
     .stCaption, p {
         color: #4B5563 !important;
     }
 
-    /* 5. ELIMINAR VERMELHO/ROSA DAS ABAS E APLICAR VERDE AGRO (#15803D) */
+    /* 4. ABAS DE NAVEGAÇÃO EM VERDE AGRO (#15803D) */
     button[data-baseweb="tab"] {
         background-color: transparent !important;
         border: none !important;
@@ -75,7 +74,6 @@ st.markdown("""
         font-weight: 700 !important;
     }
 
-    /* Linha indicadora da aba ativa */
     div[data-baseweb="tab-highlight"] {
         background-color: #15803D !important;
     }
@@ -84,7 +82,7 @@ st.markdown("""
         background-color: #E5E7EB !important;
     }
 
-    /* 6. BOTÕES E COMPONENTES VERDES */
+    /* 5. BOTÕES E MÉTRICAS */
     .stButton>button, .stDownloadButton>button {
         background-color: #15803D !important;
         color: #FFFFFF !important;
@@ -99,7 +97,6 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
-    /* Métricas e Caixas de Alerta */
     [data-testid="stMetricValue"] {
         color: #15803D !important;
     }
@@ -135,7 +132,7 @@ TRADUCAO_VARIAVEIS = {
 }
 
 # ------------------------------------------------------------------------------
-# 1. CARREGAMENTO DE DADOS (OTIMIZADO)
+# 1. CARREGAMENTO E PROCESSAMENTO COM OTIMIZAÇÃO DE MEMÓRIA (DOWNCASTING)
 # ------------------------------------------------------------------------------
 @st.cache_data
 def carregar_e_processar_dados():
@@ -254,7 +251,7 @@ aba1, aba2, aba3 = st.tabs([
 ])
 
 # ------------------------------------------------------------------------------
-# ABA 1: MAPA GEOGRÁFICO DE ZONAS
+# ABA 1: MAPA GEOGRÁFICO DE ZONAS (OTIMIZADO)
 # ------------------------------------------------------------------------------
 with aba1:
     st.markdown('<h3 style="color: #111827 !important;">Sensibilidade Climática das Culturas Agrícolas por Estado</h3>', unsafe_allow_html=True)
@@ -296,20 +293,30 @@ with aba1:
         feature['properties']['correlacao'] = str(st_info['correlacao'])
         feature['properties']['sensibilidade'] = st_info['sensibilidade_pct']
 
+    # Mapa otimizado (CartoDB Positron leve + sem duplicação de tiles)
     mapa = folium.Map(
         location=[-14.2350, -51.9253], 
-        zoom_start=4, 
-        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', 
-        attr='Esri'
+        zoom_start=4,
+        min_zoom=3,
+        max_zoom=7,
+        tiles=None,
+        world_copy_jump=False
     )
+
+    folium.TileLayer(
+        tiles='CartoDB positron',
+        name='CartoDB Positron',
+        no_wrap=True,
+        attr='&copy; <a href="https://carto.com/">CARTO</a>'
+    ).add_to(mapa)
 
     folium.GeoJson(
         geo_data,
         style_function=lambda f: {
             'fillColor': f['properties']['cor_regiao'], 
             'color': '#FFFFFF', 
-            'weight': 1.5, 
-            'fillOpacity': 0.50
+            'weight': 1.2, 
+            'fillOpacity': 0.60
         },
         highlight_function=lambda f: {
             'fillColor': f['properties']['cor_regiao'], 
@@ -325,7 +332,8 @@ with aba1:
         )
     ).add_to(mapa)
 
-    st_folium(mapa, width="100%", height=550)
+    # returned_objects=[] elimina completamente o lag ao passar o mouse sobre os estados
+    st_folium(mapa, width="100%", height=520, returned_objects=[])
 
 # ------------------------------------------------------------------------------
 # ABA 2: MATRIZ DE SENSIBILIDADE
