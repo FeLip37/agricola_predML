@@ -5,20 +5,103 @@ import folium
 from streamlit_folium import st_folium
 import requests
 import unicodedata
+import os
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 
-# Configuração da página Streamlit
+# ------------------------------------------------------------------------------
+# CONFIGURAÇÃO DA PÁGINA E ÍCONE
+# ------------------------------------------------------------------------------
+icone_path = "icon.png" if os.path.exists("icon.png") else None
+
 st.set_page_config(
-    page_title="Plataforma de Análise Climatológica & Agrícola",
-    page_icon="🌾",
+    page_title="Plataforma de Análise Climatológica e Agrícola",
+    page_icon=icone_path if icone_path else "circle",
     layout="wide"
 )
 
-# Dicionário de Tradução Amigável dos Lags para Termos Agronómicos
+# ------------------------------------------------------------------------------
+# ESTILIZAÇÃO CSS CUSTOMIZADA (LAYOUT BRANCO, FONTE PROFISSIONAL E SEM EMOJIS)
+# ------------------------------------------------------------------------------
+st.markdown("""
+    <style>
+    /* Importação da fonte corporativa Inter */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+    /* Tipografia Global e Fundo Branco */
+    html, body, [class*="css"] {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+        color: #1F2937 !important;
+    }
+
+    .stApp {
+        background-color: #FFFFFF !important;
+    }
+
+    /* Cabeçalhos e Títulos */
+    h1, h2, h3, h4, h5, h6 {
+        font-family: 'Inter', sans-serif !important;
+        font-weight: 600 !important;
+        color: #111827 !important;
+        letter-spacing: -0.02em !important;
+    }
+
+    /* Estilização das Abas */
+    button[data-baseweb="tab"] {
+        font-family: 'Inter', sans-serif !important;
+        font-weight: 500 !important;
+        color: #4B5563 !important;
+        background-color: transparent !important;
+        border-bottom: 2px solid #E5E7EB !important;
+        padding: 12px 20px !important;
+    }
+
+    button[data-baseweb="tab"][aria-selected="true"] {
+        color: #15803D !important;
+        border-bottom-color: #15803D !important;
+        font-weight: 600 !important;
+    }
+
+    /* Botões de Ação e Download */
+    .stButton>button, .stDownloadButton>button {
+        background-color: #15803D !important;
+        color: #FFFFFF !important;
+        border-radius: 6px !important;
+        border: none !important;
+        font-family: 'Inter', sans-serif !important;
+        font-weight: 500 !important;
+        padding: 0.6rem 1.2rem !important;
+        transition: background-color 0.2s ease !important;
+    }
+
+    .stButton>button:hover, .stDownloadButton>button:hover {
+        background-color: #166534 !important;
+        color: #FFFFFF !important;
+    }
+
+    /* Métricas e Alertas */
+    [data-testid="stMetricValue"] {
+        font-family: 'Inter', sans-serif !important;
+        font-weight: 700 !important;
+        color: #15803D !important;
+    }
+
+    .stAlert {
+        background-color: #F9FAFB !important;
+        color: #374151 !important;
+        border: 1px solid #E5E7EB !important;
+        border-left: 4px solid #15803D !important;
+        border-radius: 6px !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# ------------------------------------------------------------------------------
+# DICIONÁRIO DE TRADUÇÃO DE VARIÁVEIS
+# ------------------------------------------------------------------------------
 TRADUCAO_VARIAVEIS = {
-    'chuva_total': 'Chuva (Total Mês da Colheita)',
+    'chuva_total': 'Chuva (Mês da Colheita)',
     'radiacao_solar_total': 'Radiação Solar (Mês da Colheita)',
     'temperatura_media': 'Temperatura Média (Mês da Colheita)',
     
@@ -40,22 +123,18 @@ TRADUCAO_VARIAVEIS = {
 # ------------------------------------------------------------------------------
 @st.cache_data
 def carregar_e_processar_dados():
-    # Carrega a versão leve compactada em Parquet
     df = pd.read_parquet('pi_mensal.parquet')
 
-    # Limpeza de strings e aspas residuais
     for col in ['estado', 'produto', 'mes']:
         if col in df.columns:
             df[col] = df[col].astype(str).str.replace('"', '').str.strip()
 
-    # Tipagem numérica para colunas climáticas e de produção
     cols_num = ['quantidade_produzida', 'chuva_total', 'radiacao_solar_total', 'temperatura_media']
     for col in cols_num:
         if col in df.columns:
             df[col] = df[col].astype(str).str.replace('"', '').str.strip()
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
-    # Mapeamento dos meses (Garante que a coluna mes_num é SEMPRE criada)
     meses_map = {
         'Janeiro': 1, 'Fevereiro': 2, 'Março': 3, 'Abril': 4, 'Maio': 5, 'Junho': 6,
         'Julho': 7, 'Agosto': 8, 'Setembro': 9, 'Outubro': 10, 'Novembro': 11, 'Dezembro': 12
@@ -65,11 +144,9 @@ def carregar_e_processar_dados():
     else:
         df['mes_num'] = 1
 
-    # Ordenação temporal segura
     cols_ordem = [c for c in ['estado', 'produto', 'ano', 'mes_num'] if c in df.columns]
     df = df.sort_values(by=cols_ordem).reset_index(drop=True)
 
-    # Engenharia de Lags Climáticos
     for col in ['chuva_total', 'radiacao_solar_total', 'temperatura_media']:
         for lag in [1, 2, 3]:
             df[f'{col}_lag{lag}'] = df.groupby(['estado', 'produto'])[col].shift(lag)
@@ -84,8 +161,6 @@ df_ml = carregar_e_processar_dados()
 @st.cache_data
 def calcular_sensibilidade_estados(df_input):
     cols_analise = [c for c in df_input.columns if 'lag' in c or c in ['chuva_total', 'radiacao_solar_total', 'temperatura_media']]
-    
-    # Otimização: Filtra apenas produtos com produção ativa
     df_com_prod = df_input[df_input['quantidade_produzida'] > 0]
     produtos_ativos = df_com_prod.groupby('estado')['produto'].unique().to_dict()
 
@@ -116,24 +191,35 @@ def calcular_sensibilidade_estados(df_input):
 info_estados = calcular_sensibilidade_estados(df_ml)
 
 # ------------------------------------------------------------------------------
-# 3. INTERFACE PRINCIPAL STREAMLIT
+# CABEÇALHO DO DASHBOARD
 # ------------------------------------------------------------------------------
-st.title("🌾 Plataforma de Análise Climatológica & Agrícola do Brasil")
-st.markdown("Análise espaço-temporal da relação entre clima (Open-Meteo) e safras agrícolas (SIDRA/IBGE).")
+col_logo, col_titulo = st.columns([0.08, 0.92])
 
-# Criar Abas da Aplicação
+with col_logo:
+    if icone_path:
+        st.image(icone_path, width=64)[cite: 15]
+
+with col_titulo:
+    st.title("Plataforma de Análise Climatológica e Agrícola do Brasil")
+    st.caption("Análise espaço-temporal e modelagem estatística entre dados meteorológicos (Open-Meteo) e safras agrícolas (IBGE/SIDRA).")
+
+st.divider()
+
+# ------------------------------------------------------------------------------
+# ABAS DE NAVEGAÇÃO
+# ------------------------------------------------------------------------------
 aba1, aba2, aba3 = st.tabs([
-    "🗺️ Mapa Geográfico de Zonas", 
-    "📊 Matriz de Sensibilidade", 
-    "🤖 Módulo de Preparação para Machine Learning"
+    "Mapa Geográfico de Zonas", 
+    "Matriz de Sensibilidade", 
+    "Módulo de Preparação para Machine Learning"
 ])
 
 # ------------------------------------------------------------------------------
-# ABA 1: MAPA DE ZONAS ESPACIAIS (GEOJSON HOVER)
+# ABA 1: MAPA GEOGRÁFICO DE ZONAS
 # ------------------------------------------------------------------------------
 with aba1:
     st.subheader("Sensibilidade Climática das Culturas Agrícolas por Estado")
-    st.caption("Passe o cursor sobre qualquer estado para visualizar a cultura mais afetada e a fase climática crítica.")
+    st.caption("Passe o cursor sobre a área de qualquer estado para visualizar a cultura de maior impacto e a fase climática crítica.")
 
     @st.cache_data
     def carregar_geojson():
@@ -149,9 +235,8 @@ with aba1:
         'Paraná': 'Sul', 'Santa Catarina': 'Sul', 'Rio Grande do Sul': 'Sul',
         'Mato Grosso do Sul': 'Centro-Oeste', 'Mato Grosso': 'Centro-Oeste', 'Goiás': 'Centro-Oeste', 'Distrito Federal': 'Centro-Oeste'
     }
-    cores_regiao = {'Norte': '#2ca02c', 'Nordeste': '#ff7f0e', 'Centro-Oeste': '#9467bd', 'Sudeste': '#d62728', 'Sul': '#1f77b4'}
+    cores_regiao = {'Norte': '#15803D', 'Nordeste': '#D97706', 'Centro-Oeste': '#7C3AED', 'Sudeste': '#DC2626', 'Sul': '#2563EB'}
 
-    # Normalizador de texto para correspondência perfeita entre GeoJSON e DataFrame
     def norm_text(txt):
         if not isinstance(txt, str): return ""
         return unicodedata.normalize('NFD', txt).encode('ascii', 'ignore').decode('utf-8').strip().lower()
@@ -166,13 +251,12 @@ with aba1:
         })
         
         feature['properties']['regiao'] = reg
-        feature['properties']['cor_regiao'] = cores_regiao.get(reg, '#cccccc')
+        feature['properties']['cor_regiao'] = cores_regiao.get(reg, '#CCCCCC')
         feature['properties']['produto'] = st_info['produto_sensivel']
         feature['properties']['variavel'] = st_info['variavel_critica']
         feature['properties']['correlacao'] = str(st_info['correlacao'])
         feature['properties']['sensibilidade'] = st_info['sensibilidade_pct']
 
-    # Mapa centrado no Brasil (Camada Esri)
     mapa = folium.Map(
         location=[-14.2350, -51.9253], 
         zoom_start=4, 
@@ -184,28 +268,28 @@ with aba1:
         geo_data,
         style_function=lambda f: {
             'fillColor': f['properties']['cor_regiao'], 
-            'color': 'white', 
+            'color': '#FFFFFF', 
             'weight': 1.5, 
             'fillOpacity': 0.50
         },
         highlight_function=lambda f: {
             'fillColor': f['properties']['cor_regiao'], 
-            'color': 'black', 
-            'weight': 3, 
+            'color': '#111827', 
+            'weight': 2.5, 
             'fillOpacity': 0.85
         },
         tooltip=folium.GeoJsonTooltip(
             fields=['name', 'regiao', 'produto', 'variavel', 'correlacao', 'sensibilidade'],
             aliases=['Estado:', 'Região:', 'Cultura Mais Afetada:', 'Fase Climática Crítica:', 'Índice Spearman:', 'Sensibilidade Climática:'],
             sticky=True,
-            style="background-color: #ffffff; border: 2px solid #333333; border-radius: 6px; padding: 10px; font-family: Arial, sans-serif; font-size: 13px;"
+            style="background-color: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 6px; padding: 10px; font-family: Inter, sans-serif; font-size: 13px; color: #1F2937;"
         )
     ).add_to(mapa)
 
     st_folium(mapa, width="100%", height=550)
 
 # ------------------------------------------------------------------------------
-# ABA 2: TABELA RESUMO DE SENSIBILIDADE ESTATÍSTICA
+# ABA 2: MATRIZ DE SENSIBILIDADE
 # ------------------------------------------------------------------------------
 with aba2:
     st.subheader("Resumo Estatístico da Correlação de Spearman por Estado")
@@ -214,11 +298,11 @@ with aba2:
     st.dataframe(df_resumo, use_container_width=True)
 
 # ------------------------------------------------------------------------------
-# ABA 3: MÓDULO DE PREPARAÇÃO PARA MACHINE LEARNING (REPLIT / DEPLOY)
+# ABA 3: MÓDULO DE PREPARAÇÃO PARA MACHINE LEARNING
 # ------------------------------------------------------------------------------
 with aba3:
     st.subheader("Módulo de Engenharia de Recursos para Machine Learning")
-    st.info("Esta secção estrutura as matrizes de entrada (X) e a variável alvo (y) com pré-processamento para integração no Replit ou APIs, sem executar treino de modelos nesta fase.")
+    st.info("Estruturação das matrizes de entrada (X) e alvo (y) com pré-processamento para integração posterior via Replit ou API externa.")
 
     colunas_climaticas = [c for c in df_ml.columns if 'lag' in c or c in ['chuva_total', 'radiacao_solar_total', 'temperatura_media']]
     colunas_cat = ['estado', 'produto', 'mes_num']
@@ -246,16 +330,19 @@ with aba3:
     st.write("Amostra do Alvo de Produção (Target y_train):")
     st.dataframe(y_train.head(10), use_container_width=True)
 
-    st.subheader("Exportar Ficheiros de Dados Prontos para o Replit")
-    st.download_button(
-        label="📥 Baixar X_train_agricola.csv",
-        data=X_train.to_csv(index=False),
-        file_name="X_train_agricola.csv",
-        mime="text/csv"
-    )
-    st.download_button(
-        label="📥 Baixar y_train_agricola.csv",
-        data=y_train.to_csv(index=False),
-        file_name="y_train_agricola.csv",
-        mime="text/csv"
-    )
+    st.subheader("Exportação de Dados")
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        st.download_button(
+            label="Baixar X_train_agricola.csv",
+            data=X_train.to_csv(index=False),
+            file_name="X_train_agricola.csv",
+            mime="text/csv"
+        )
+    with col_btn2:
+        st.download_button(
+            label="Baixar y_train_agricola.csv",
+            data=y_train.to_csv(index=False),
+            file_name="y_train_agricola.csv",
+            mime="text/csv"
+        )
