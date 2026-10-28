@@ -43,7 +43,7 @@ st.markdown("""
     }
 
     .block-container {
-        padding-top: 2.5rem !important;
+        padding-top: 2rem !important;
         padding-bottom: 2rem !important;
     }
 
@@ -182,79 +182,45 @@ def carregar_e_processar_dados():
 df_ml = carregar_e_processar_dados()
 
 # ------------------------------------------------------------------------------
-# 2. CÁLCULO ESTATÍSTICO DE SPEARMAN (GERAL E POR PRODUTO ESPECÍFICO)
+# 2. PRÉ-CÁLCULO TOTAL DAS CORRELAÇÕES (EVITA O LAG COMPLETAMENTE)
 # ------------------------------------------------------------------------------
 @st.cache_data
-def calcular_sensibilidade_filtro(df_input, produto_sel):
+def precalcular_todas_sensibilidades(df_input):
     cols_analise = [c for c in df_input.columns if 'lag' in c or c in ['chuva_total', 'radiacao_solar_total', 'temperatura_media']]
+    df_valid = df_input[df_input['quantidade_produzida'] > 0]
     
-    info = {}
-    melhor_estado = "N/A"
-    maior_corr_abs_global = -1.0
-    detalhes_destaque = {}
+    sensib_map = {}
+    visao_geral = {}
 
-    if produto_sel == "Visão Geral (Cultura Mais Sensível por Estado)":
-        df_com_prod = df_input[df_input['quantidade_produzida'] > 0]
-        produtos_ativos = df_com_prod.groupby('estado')['produto'].unique().to_dict()
+    grouped = df_valid.groupby(['estado', 'produto'])
+    
+    for (est, prod), group in grouped:
+        if len(group) >= 4 and group['quantidade_produzida'].std() > 0:
+            corrs = group[['quantidade_produzida'] + cols_analise].corr(method='spearman')['quantidade_produzida'].drop('quantidade_produzida').dropna()
+            if not corrs.empty:
+                v_max = corrs.abs().idxmax()
+                c_val = float(corrs[v_max])
+                abs_c = abs(c_val)
 
-        for est in df_input['estado'].unique():
-            prods = produtos_ativos.get(est, df_input[df_input['estado'] == est]['produto'].unique())
-            max_corr_abs, melhor_prod, melhor_var, val_corr = -1, 'Sem Variação', 'N/A', 0.0
+                item = {
+                    'produto_sensivel': prod,
+                    'variavel_critica': TRADUCAO_VARIAVEIS.get(v_max, v_max),
+                    'correlacao': round(c_val, 2),
+                    'sensibilidade_pct': f"{abs_c*100:.1f}%",
+                    'abs_corr': abs_c
+                }
 
-            for prod in prods:
-                df_p = df_input[(df_input['estado'] == est) & (df_input['produto'] == prod)]
-                if len(df_p) >= 4 and df_p['quantidade_produzida'].std() > 0:
-                    corrs = df_p[['quantidade_produzida'] + cols_analise].corr(method='spearman')['quantidade_produzida'].drop('quantidade_produzida').dropna()
-                    if not corrs.empty:
-                        v_max = corrs.abs().idxmax()
-                        c_val = corrs[v_max]
-                        if abs(c_val) > max_corr_abs:
-                            max_corr_abs = abs(c_val)
-                            melhor_prod, melhor_var, val_corr = prod, v_max, c_val
+                if prod not in sensib_map:
+                    sensib_map[prod] = {}
+                sensib_map[prod][est] = item
 
-            info[est] = {
-                'produto_sensivel': melhor_prod,
-                'variavel_critica': TRADUCAO_VARIAVEIS.get(melhor_var, melhor_var),
-                'correlacao': round(float(val_corr), 2),
-                'sensibilidade_pct': f"{abs(float(val_corr))*100:.1f}%"
-            }
-        return info, None
+                if est not in visao_geral or abs_c > visao_geral[est]['abs_corr']:
+                    visao_geral[est] = item
 
-    else:
-        # Filtro de produto específico
-        df_p = df_input[(df_input['produto'] == produto_sel) & (df_input['quantidade_produzida'] > 0)]
+    sensib_map["Visão Geral (Cultura Mais Sensível por Estado)"] = visao_geral
+    return sensib_map
 
-        for est in df_input['estado'].unique():
-            df_est = df_p[df_p['estado'] == est]
-            if len(df_est) >= 4 and df_est['quantidade_produzida'].std() > 0:
-                corrs = df_est[['quantidade_produzida'] + cols_analise].corr(method='spearman')['quantidade_produzida'].drop('quantidade_produzida').dropna()
-                if not corrs.empty:
-                    v_max = corrs.abs().idxmax()
-                    c_val = corrs[v_max]
-                    abs_c = abs(c_val)
-
-                    info[est] = {
-                        'produto_sensivel': produto_sel,
-                        'variavel_critica': TRADUCAO_VARIAVEIS.get(v_max, v_max),
-                        'correlacao': round(float(c_val), 2),
-                        'sensibilidade_pct': f"{abs_c*100:.1f}%"
-                    }
-
-                    if abs_c > maior_corr_abs_global:
-                        maior_corr_abs_global = abs_c
-                        melhor_estado = est
-                        detalhes_destaque = info[est]
-                else:
-                    info[est] = {'produto_sensivel': produto_sel, 'variavel_critica': 'Sem variação', 'correlacao': 0.0, 'sensibilidade_pct': '0%'}
-            else:
-                info[est] = {'produto_sensivel': produto_sel, 'variavel_critica': 'Sem dados suficientes', 'correlacao': 0.0, 'sensibilidade_pct': '0%'}
-
-        destaque_info = {
-            'estado': melhor_estado,
-            'detalhes': detalhes_destaque
-        } if melhor_estado != "N/A" else None
-
-        return info, destaque_info
+matriz_sensibilidade = precalcular_todas_sensibilidades(df_ml)
 
 # ------------------------------------------------------------------------------
 # CABEÇALHO DO DASHBOARD
@@ -291,14 +257,12 @@ aba1, aba2, aba3 = st.tabs([
 ])
 
 # ------------------------------------------------------------------------------
-# ABA 1: MAPA GEOGRÁFICO DE ZONAS (RECURSO CORTADO PARA O BRASIL & SELETOR)
+# ABA 1: MAPA GEOGRÁFICO VETORIAL EXCLUSIVO DO BRASIL (ZERO LAG & INSTANTÂNEO)
 # ------------------------------------------------------------------------------
 with aba1:
     st.markdown('<h3 style="color: #111827 !important;">Sensibilidade Climática das Culturas Agrícolas por Estado</h3>', unsafe_allow_html=True)
 
-    # Obter lista única de produtos com produção ativa
-    produtos_unicos = sorted(list(df_ml[df_ml['quantidade_produzida'] > 0]['produto'].unique()))
-    opcoes_filtro = ["Visão Geral (Cultura Mais Sensível por Estado)"] + produtos_unicos
+    opcoes_filtro = ["Visão Geral (Cultura Mais Sensível por Estado)"] + sorted([k for k in matriz_sensibilidade.keys() if k != "Visão Geral (Cultura Mais Sensível por Estado)"])
 
     col_sel, col_info = st.columns([0.45, 0.55])
     with col_sel:
@@ -307,14 +271,22 @@ with aba1:
             opcoes_filtro
         )
 
-    info_estados, destaque = calcular_sensibilidade_filtro(df_ml, produto_selecionado)
+    # Resgata os dados pré-calculados de forma instantânea $O(1)$
+    info_estados = matriz_sensibilidade.get(produto_selecionado, {})
+
+    # Localizar o estado de maior sensibilidade para a cultura escolhida
+    destaque = None
+    if produto_selecionado != "Visão Geral (Cultura Mais Sensível por Estado)" and info_estados:
+        est_max = max(info_estados.items(), key=lambda x: x[1].get('abs_corr', 0), default=(None, None))
+        if est_max[0] and est_max[1].get('abs_corr', 0) > 0:
+            destaque = (est_max[0], est_max[1])
 
     with col_info:
         if destaque:
-            st.info(f"**Estado de Maior Impacto Climático para {produto_selecionado}:** {destaque['estado']} "
-                    f"({destaque['detalhes']['sensibilidade_pct']} de sensibilidade - {destaque['detalhes']['variavel_critica']})")
+            st.info(f"**Estado de Maior Impacto Climático para {produto_selecionado}:** {destaque[0]} "
+                    f"({destaque[1]['sensibilidade_pct']} de sensibilidade - {destaque[1]['variavel_critica']})")
         else:
-            st.caption("Passe o cursor sobre a área de qualquer estado no mapa para visualizar os detalhes.")
+            st.caption("Passe o cursor sobre a área de qualquer estado no mapa para visualizar os detalhes de sensibilidade.")
 
     @st.cache_data
     def carregar_geojson():
@@ -342,7 +314,7 @@ with aba1:
         nome_est = feature['properties']['name']
         reg = mapa_regioes.get(nome_est, 'Norte')
         st_info = info_norm.get(norm_text(nome_est), {
-            'produto_sensivel': 'Dados insuficientes', 'variavel_critica': 'N/A', 'correlacao': 0.0, 'sensibilidade_pct': '0%'
+            'produto_sensivel': 'Sem dados suficientes', 'variavel_critica': 'N/A', 'correlacao': 0.0, 'sensibilidade_pct': '0%'
         })
         
         feature['properties']['regiao'] = reg
@@ -352,39 +324,27 @@ with aba1:
         feature['properties']['correlacao'] = str(st_info['correlacao'])
         feature['properties']['sensibilidade'] = st_info['sensibilidade_pct']
 
-    # MAPA RECORTADO EXCLUSIVAMENTE PARA O BRASIL (SEM MAPA MUNDI / SEM API KEY)
+    # MAPA VETORIAL PURO (tiles=None -> Sem mapa mundi, sem marcas d'água e ultra rápido)
     mapa = folium.Map(
         location=[-14.2350, -51.9253], 
         zoom_start=4,
-        min_zoom=4,
-        max_zoom=7,
-        max_bounds=True,
-        min_lat=-34.0, max_lat=5.5,
-        min_lon=-74.0, max_lon=-34.0,
         tiles=None,
-        world_copy_jump=False
+        zoom_control=True
     )
-
-    folium.TileLayer(
-        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
-        name='Esri Light Gray Canvas',
-        attr='Esri, HERE, Garmin, USGS, NGA, EPA, USDA, NPS',
-        no_wrap=True
-    ).add_to(mapa)
 
     folium.GeoJson(
         geo_data,
         style_function=lambda f: {
             'fillColor': f['properties']['cor_regiao'], 
             'color': '#FFFFFF', 
-            'weight': 1.2, 
-            'fillOpacity': 0.65
+            'weight': 1.5, 
+            'fillOpacity': 0.70
         },
         highlight_function=lambda f: {
             'fillColor': f['properties']['cor_regiao'], 
             'color': '#111827', 
             'weight': 2.5, 
-            'fillOpacity': 0.85
+            'fillOpacity': 0.90
         },
         tooltip=folium.GeoJsonTooltip(
             fields=['name', 'regiao', 'produto', 'variavel', 'correlacao', 'sensibilidade'],
@@ -402,7 +362,10 @@ with aba1:
 with aba2:
     st.markdown('<h3 style="color: #111827 !important;">Resumo Estatístico da Correlação de Spearman por Estado</h3>', unsafe_allow_html=True)
     df_resumo = pd.DataFrame.from_dict(info_estados, orient='index')
-    df_resumo.columns = ['Cultura Analisada', 'Fase Climática Crítica', 'Correlação (Spearman)', 'Sensibilidade Climática (%)']
+    if not df_resumo.empty and 'abs_corr' in df_resumo.columns:
+        df_resumo = df_resumo.drop(columns=['abs_corr'])
+    if not df_resumo.empty:
+        df_resumo.columns = ['Cultura Analisada', 'Fase Climática Crítica', 'Correlação (Spearman)', 'Sensibilidade Climática (%)']
     st.dataframe(df_resumo, use_container_width=True)
 
 # ------------------------------------------------------------------------------
