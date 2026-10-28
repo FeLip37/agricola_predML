@@ -197,7 +197,7 @@ col_logo, col_titulo = st.columns([0.08, 0.92])
 
 with col_logo:
     if icone_path:
-        st.image(icone_path, width=64)[cite: 15]
+        st.image(icone_path, width=64)
 
 with col_titulo:
     st.title("Plataforma de Análise Climatológica e Agrícola do Brasil")
